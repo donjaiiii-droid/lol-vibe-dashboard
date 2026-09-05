@@ -58,7 +58,7 @@ export default function Home() {
 
   const handleSearch = async () => {
     if (!riotId.includes('#')) {
-      setError('請輸入完整的 Riot ID (例如: Fungz#TW2)');
+      setError('請輸入完整的 Riot ID (例如: Faker#KR1)');
       return;
     }
     setLoading(true);
@@ -67,6 +67,7 @@ export default function Home() {
       const searchId = riotId.trim();
 const res = await fetch(`/api/matches?riotId=${encodeURIComponent(searchId)}&region=${region}`);
       const result = await res.json();
+      console.log("【API 回傳資料】", result);
       if (!res.ok) throw new Error(result.error || '連線失敗');
       setData(result);
     } catch (err: any) {
@@ -252,9 +253,9 @@ const ranks = {
   className="bg-slate-800 text-white px-3 py-2 rounded-lg border border-slate-700 focus:outline-none mr-2"
 >
   <option value="tw2">台服 (TW)</option>
-  <option value="kr">韓服 (KR)</option>
-  <option value="na1">美服 (NA)</option>
-  <option value="euw1">歐服 (EUW)</option>
+<option value="kr">韓服 (KR)</option>
+<option value="na1">美服 (NA)</option>
+<option value="euw1">歐服 (EUW)</option>
 </select>
           <input
             type="text"
