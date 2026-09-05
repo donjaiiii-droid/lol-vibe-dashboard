@@ -257,15 +257,37 @@ const res = await fetch(`/api/matches?riotId=${encodeURIComponent(searchId)}&reg
           </div>
         )}
 
+// 將 API 回傳的 league 陣列轉為 UI 讀取的 ranks 結構
+const soloRank = data?.league?.find((item: any) => item.queueType === 'RANKED_SOLO_5x5');
+const flexRank = data?.league?.find((item: any) => item.queueType === 'RANKED_FLEX_SR');
+
+const ranks = {
+  solo: soloRank ? {
+    tier: soloRank.tier,
+    rank: soloRank.rank,
+    leaguePoints: soloRank.leaguePoints,
+    wins: soloRank.wins,
+    losses: soloRank.losses,
+    winRate: Math.round((soloRank.wins / (soloRank.wins + soloRank.losses)) * 100)
+  } : null,
+  flex: flexRank ? {
+    tier: flexRank.tier,
+    rank: flexRank.rank,
+    leaguePoints: flexRank.leaguePoints,
+    wins: flexRank.wins,
+    losses: flexRank.losses,
+    winRate: Math.round((flexRank.wins / (flexRank.wins + flexRank.losses)) * 100)
+  } : null
+};
         {data && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             
             {/* 左側：段位面板 */}
             <div className="space-y-4 md:col-span-1">
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex items-center gap-4">
-                {getRankBadge(data.ranks?.solo?.tier) ? (
+                {getRankBadge(ranks?.solo?.tier) ? (
                   <img
-                    src={getRankBadge(data.ranks?.solo?.tier)!}
+                    src={getRankBadge(ranks?.solo?.tier)!}
                     alt="Solo Rank"
                     className="w-16 h-16 object-contain filter drop-shadow"
                     onError={(e: any) => { e.target.style.display = 'none'; }}
@@ -278,20 +300,20 @@ const res = await fetch(`/api/matches?riotId=${encodeURIComponent(searchId)}&reg
                 <div className="space-y-1">
                   <span className="text-[11px] font-black text-slate-300 uppercase tracking-wider">單/雙排積分</span>
                   <div className="text-base font-black text-white capitalize">
-                    {data.ranks?.solo ? `${data.ranks.solo.tier} ${data.ranks.solo.rank}` : '未定級 (Unranked)'}
+                    {ranks?.solo ? `${ranks.solo.tier} ${ranks.solo.rank}` : '未定級 (Unranked)'}
                   </div>
-                  {data.ranks?.solo && (
+                  {ranks?.solo && (
                     <div className="text-xs text-slate-300 font-semibold">
-                      <span className="font-black text-blue-400">{data.ranks.solo.leaguePoints} LP</span> · {data.ranks.solo.wins}勝 {data.ranks.solo.losses}敗 ({data.ranks.solo.winRate}%)
+                      <span className="font-black text-blue-400">{ranks.solo.leaguePoints} LP</span> · {ranks.solo.wins}勝 {ranks.solo.losses}敗 ({ranks.solo.winRate}%)
                     </div>
                   )}
                 </div>
               </div>
 
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex items-center gap-4">
-                {getRankBadge(data.ranks?.flex?.tier) ? (
+                {getRankBadge(ranks?.flex?.tier) ? (
                   <img
-                    src={getRankBadge(data.ranks?.flex?.tier)!}
+                    src={getRankBadge(ranks?.flex?.tier)!}
                     alt="Flex Rank"
                     className="w-16 h-16 object-contain filter drop-shadow"
                     onError={(e: any) => { e.target.style.display = 'none'; }}
@@ -304,11 +326,11 @@ const res = await fetch(`/api/matches?riotId=${encodeURIComponent(searchId)}&reg
                 <div className="space-y-1">
                   <span className="text-[11px] font-black text-slate-300 uppercase tracking-wider">彈性積分</span>
                   <div className="text-base font-black text-white capitalize">
-                    {data.ranks?.flex ? `${data.ranks.flex.tier} ${data.ranks.flex.rank}` : '未定級 (Unranked)'}
+                    {ranks?.flex ? `${ranks.flex.tier} ${ranks.flex.rank}` : '未定級 (Unranked)'}
                   </div>
-                  {data.ranks?.flex && (
+                  {ranks?.flex && (
                     <div className="text-xs text-slate-300 font-semibold">
-                      <span className="font-black text-blue-400">{data.ranks.flex.leaguePoints} LP</span> · {data.ranks.flex.wins}勝 {data.ranks.flex.losses}敗 ({data.ranks.flex.winRate}%)
+                      <span className="font-black text-blue-400">{ranks.flex.leaguePoints} LP</span> · {ranks.flex.wins}勝 {ranks.flex.losses}敗 ({ranks.flex.winRate}%)
                     </div>
                   )}
                 </div>
