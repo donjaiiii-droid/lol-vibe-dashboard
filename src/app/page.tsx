@@ -183,8 +183,8 @@ const res = await fetch(`/api/matches?riotId=${encodeURIComponent(searchId)}&reg
     return `https://opgg-static.akamaized.net/images/medals_new/${tier.toLowerCase()}.png`;
   };
 // 將 API 回傳的 league 陣列轉為 UI 讀取的 ranks 結構
-const soloRank = data?.league?.find((item: any) => item.queueType === 'RANKED_SOLO_5x5');
-const flexRank = data?.league?.find((item: any) => item.queueType === 'RANKED_FLEX_SR');
+const soloRank = data?.ranks?.find((item: any) => item.queueType === 'RANKED_SOLO_5x5');
+const flexRank = data?.ranks?.find((item: any) => item.queueType === 'RANKED_FLEX_SR');
 
 const ranks = {
   solo: soloRank ? {
