@@ -33,12 +33,14 @@ export async function GET(request: Request) {
     const accountData = await accountRes.json();
     const puuid = accountData.puuid;
 
-    // 2. 直接透過 PUUID 取得 階級資訊 (新版 League V4)
+    // 2. 直接透過 PUUID 取得階級資訊
     const leagueRes = await fetch(
       `https://${regionConfig.platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}?api_key=${API_KEY}`
     );
     
-    let ranks = { solo: null, flex: null };
+    // 💡 顯式宣告 ranks 的型態，解決 TypeScript TS2322 報錯
+    let ranks: { solo: any; flex: any } = { solo: null, flex: null };
+
     if (leagueRes.ok) {
       const leagueData = await leagueRes.json();
       const solo = leagueData.find((item: any) => item.queueType === 'RANKED_SOLO_5x5');
@@ -62,8 +64,6 @@ export async function GET(request: Request) {
           winRate: Math.round((flex.wins / (flex.wins + flex.losses)) * 100)
         } : null
       };
-    } else {
-      console.error(`League API Error: ${leagueRes.status}`);
     }
 
     // 3. 取得近期 20 場對戰 IDs
