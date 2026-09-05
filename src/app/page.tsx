@@ -181,7 +181,28 @@ const res = await fetch(`/api/matches?riotId=${encodeURIComponent(searchId)}&reg
     if (!tier) return null;
     return `https://opgg-static.akamaized.net/images/medals_new/${tier.toLowerCase()}.png`;
   };
+// 將 API 回傳的 league 陣列轉為 UI 讀取的 ranks 結構
+const soloRank = data?.league?.find((item: any) => item.queueType === 'RANKED_SOLO_5x5');
+const flexRank = data?.league?.find((item: any) => item.queueType === 'RANKED_FLEX_SR');
 
+const ranks = {
+  solo: soloRank ? {
+    tier: soloRank.tier,
+    rank: soloRank.rank,
+    leaguePoints: soloRank.leaguePoints,
+    wins: soloRank.wins,
+    losses: soloRank.losses,
+    winRate: Math.round((soloRank.wins / (soloRank.wins + soloRank.losses)) * 100)
+  } : null,
+  flex: flexRank ? {
+    tier: flexRank.tier,
+    rank: flexRank.rank,
+    leaguePoints: flexRank.leaguePoints,
+    wins: flexRank.wins,
+    losses: flexRank.losses,
+    winRate: Math.round((flexRank.wins / (flexRank.wins + flexRank.losses)) * 100)
+  } : null
+};
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans antialiased">
       <div className="max-w-5xl mx-auto space-y-6">
@@ -257,28 +278,6 @@ const res = await fetch(`/api/matches?riotId=${encodeURIComponent(searchId)}&reg
           </div>
         )}
 
-// 將 API 回傳的 league 陣列轉為 UI 讀取的 ranks 結構
-const soloRank = data?.league?.find((item: any) => item.queueType === 'RANKED_SOLO_5x5');
-const flexRank = data?.league?.find((item: any) => item.queueType === 'RANKED_FLEX_SR');
-
-const ranks = {
-  solo: soloRank ? {
-    tier: soloRank.tier,
-    rank: soloRank.rank,
-    leaguePoints: soloRank.leaguePoints,
-    wins: soloRank.wins,
-    losses: soloRank.losses,
-    winRate: Math.round((soloRank.wins / (soloRank.wins + soloRank.losses)) * 100)
-  } : null,
-  flex: flexRank ? {
-    tier: flexRank.tier,
-    rank: flexRank.rank,
-    leaguePoints: flexRank.leaguePoints,
-    wins: flexRank.wins,
-    losses: flexRank.losses,
-    winRate: Math.round((flexRank.wins / (flexRank.wins + flexRank.losses)) * 100)
-  } : null
-};
         {data && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             
