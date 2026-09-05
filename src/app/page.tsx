@@ -64,7 +64,8 @@ export default function Home() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/matches?riotId=${encodeURIComponent(searchId)}&region=${region}`)
+      const searchId = riotId.trim();
+const res = await fetch(`/api/matches?riotId=${encodeURIComponent(searchId)}&region=${region}`);
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || '連線失敗');
       setData(result);
