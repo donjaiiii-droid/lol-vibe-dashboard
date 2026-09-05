@@ -54,6 +54,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'overview' | 'style' | 'champions'>('overview');
   const [expandedMatch, setExpandedMatch] = useState<string | null>(null);
   const [searchChampFilter, setSearchChampFilter] = useState('');
+ const [region, setRegion] = useState('tw2');
 
   const handleSearch = async () => {
     if (!riotId.includes('#')) {
@@ -63,7 +64,7 @@ export default function Home() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/matches?riotId=${encodeURIComponent(riotId)}`);
+      const res = await fetch(`/api/matches?riotId=${encodeURIComponent(searchId)}&region=${region}`)
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || '連線失敗');
       setData(result);
@@ -223,6 +224,16 @@ export default function Home() {
 
         {/* 搜尋列 */}
         <div className="flex gap-3 max-w-md mx-auto">
+          <select 
+  value={region} 
+  onChange={(e) => setRegion(e.target.value)}
+  className="bg-slate-800 text-white px-3 py-2 rounded-lg border border-slate-700 focus:outline-none mr-2"
+>
+  <option value="tw2">台服 (TW)</option>
+  <option value="kr">韓服 (KR)</option>
+  <option value="na1">美服 (NA)</option>
+  <option value="euw1">歐服 (EUW)</option>
+</select>
           <input
             type="text"
             value={riotId}
@@ -320,6 +331,16 @@ export default function Home() {
                     </div>
 
                     <div className="relative">
+                      <select 
+  value={region} 
+  onChange={(e) => setRegion(e.target.value)}
+  className="bg-slate-800 text-white px-3 py-2 rounded-lg border border-slate-700 focus:outline-none mr-2"
+>
+  <option value="tw2">台服 (TW)</option>
+  <option value="kr">韓服 (KR)</option>
+  <option value="na1">美服 (NA)</option>
+  <option value="euw1">歐服 (EUW)</option>
+</select>
                       <input
                         type="text"
                         value={searchChampFilter}
