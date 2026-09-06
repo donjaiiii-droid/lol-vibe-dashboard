@@ -5,9 +5,10 @@ export const maxDuration = 30;
 
 const API_KEY = process.env.RIOT_API_KEY;
 
+// 修正 REGION_MAPPING：台服 (TW2) 對戰紀錄需要使用 'sea' routing
 const REGION_MAPPING: Record<string, { routing: string; platform: string }> = {
   kr: { routing: 'asia', platform: 'kr' },
-  tw2: { routing: 'asia', platform: 'tw2' },
+  tw2: { routing: 'sea', platform: 'tw2' },
   na1: { routing: 'americas', platform: 'na1' },
   euw1: { routing: 'europe', platform: 'euw1' },
 };
@@ -30,6 +31,7 @@ export async function GET(request: Request) {
 
   try {
     // 1. 抓取 Account (PUUID)
+    // 備註：Account-v1 可以使用 asia 或 sea，但以特定路由為準
     const accountRes = await fetch(
       `https://${regionConfig.routing}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}?api_key=${API_KEY}`,
       { cache: 'no-store' }
@@ -45,7 +47,7 @@ export async function GET(request: Request) {
     const accountData = await accountRes.json();
     const puuid = accountData.puuid;
 
-    // 2. 抓取段位 (League-v4) - 回傳陣列以相容前端 .find() 語法
+    // 2. 抓取段位 (League-v4) - 使用 platform (例如 tw2 / kr)
     let ranks: any[] = [];
     
     try {
@@ -61,7 +63,7 @@ export async function GET(request: Request) {
       console.warn('League fetch ignored error:', e);
     }
 
-    // 3. 抓取 20 場對戰 ID 列表
+    // 3. 抓取 20 場對戰 ID 列表 - 使用 routing (TW2 必須用 sea)
     const matchIdsRes = await fetch(
       `https://${regionConfig.routing}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=0&count=20&api_key=${API_KEY}`,
       { cache: 'no-store' }
@@ -72,7 +74,6 @@ export async function GET(request: Request) {
     if (matchIdsRes.ok) {
       const matchIds: string[] = await matchIdsRes.json();
 
-      // 定義抓取單場詳細資料的函式
       const fetchMatchDetail = async (matchId: string) => {
         try {
           const detailRes = await fetch(
@@ -112,7 +113,6 @@ export async function GET(request: Request) {
         }
       };
 
-      // 分兩批處理以避免請求頻率過高觸發限流
       const chunk1 = matchIds.slice(0, 10);
       const chunk2 = matchIds.slice(10, 20);
 
@@ -122,7 +122,6 @@ export async function GET(request: Request) {
       matches = [...batch1, ...batch2].filter((m) => m !== null);
     }
 
-    // 回傳結果給前端
     return NextResponse.json({
       player: {
         gameName: accountData.gameName,
