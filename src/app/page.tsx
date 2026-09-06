@@ -2,10 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 
-// Helper: 英雄頭像 CDN (加入完整預設圖標，防止 Locke 或未知英雄破圖)
+// 預設頭像/圖案 SVG Data URI (防止破圖出現裂痕框)
+const PLACEHOLDER_IMG = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="%231e293b"/><text x="50%" y="55%" font-size="28" fill="%2364748b" text-anchor="middle" dominant-baseline="middle">?</text></svg>';
+
+// Helper: 英雄頭像 CDN
 const getChampionImg = (name: string) => {
   if (!name || name === 'Locke' || name === 'Unknown') {
-    return '';
+    return PLACEHOLDER_IMG;
   }
   const nameMap: Record<string, string> = {
     FiddleSticks: 'Fiddlesticks',
@@ -21,11 +24,11 @@ const getItemImg = (itemId: number) => {
   return `https://ddragon.leagueoflegends.com/cdn/14.5.1/img/item/${itemId}.png`;
 };
 
-// Helper: 段位 Icon (修正破圖與 URL 相容性)
+// Helper: 段位 Icon (改用穩定 Riot Ddragon 資源與備用圖)
 const getRankIcon = (tier?: string) => {
-  if (!tier) return 'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/unranked.png';
+  if (!tier) return PLACEHOLDER_IMG;
   const cleanTier = tier.toLowerCase();
-  return `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/${cleanTier}.png`;
+  return `https://ddragon.leagueoflegends.com/cdn/14.5.1/img/ranked-emblems/${cleanTier}.png`;
 };
 
 // Helper: 時間格式化
@@ -81,14 +84,14 @@ export default function Home() {
   const soloRank = data?.ranks?.find((r: any) => r.queueType === 'RANKED_SOLO_5x5');
   const flexRank = data?.ranks?.find((r: any) => r.queueType === 'RANKED_FLEX_SR');
 
-  // 路線相容性解析 (避免首選角色全是 0%)
+  // 路線相容性解析
   const parseRole = (m: any) => {
     const rawPos = (m.position || m.teamPosition || m.individualPosition || m.role || m.lane || '').toUpperCase();
     if (rawPos.includes('TOP')) return 'TOP';
     if (rawPos.includes('JUNGLE') || rawPos.includes('JUG')) return 'JUNGLE';
     if (rawPos.includes('MID') || rawPos.includes('MIDDLE')) return 'MIDDLE';
     if (rawPos.includes('BOT') || rawPos.includes('BOTTOM') || rawPos.includes('DUO_CARRY') || rawPos.includes('ADC')) return 'BOTTOM';
-    return 'UTILITY'; // 預設或輔助
+    return 'UTILITY';
   };
 
   // 概要統計計算
@@ -132,7 +135,6 @@ export default function Home() {
       champMap[name].deaths += m.deaths || 0;
       champMap[name].assists += m.assists || 0;
 
-      // 正確累計路線與該路線勝場
       const roleKey = parseRole(m);
       rolesCount[roleKey] += 1;
       if (m.win) rolesWinsCount[roleKey] += 1;
@@ -262,6 +264,15 @@ export default function Home() {
 
   const championStats = getChampionStats();
 
+  // 路線圖標顏色對應表
+  const roleColors = {
+    TOP: 'bg-red-500',
+    JUNGLE: 'bg-green-500',
+    MIDDLE: 'bg-blue-500',
+    BOTTOM: 'bg-amber-500',
+    UTILITY: 'bg-purple-500',
+  };
+
   return (
     <main className="min-h-screen bg-[#070a12] text-slate-100 p-4 md:p-8 font-sans">
       <header className="max-w-6xl mx-auto flex items-center justify-between border-b border-slate-800/80 pb-4 mb-6">
@@ -314,16 +325,16 @@ export default function Home() {
       </section>
 
       <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-6">
-        {/* 左側段位 (修正破圖與 Icon 指向) */}
+        {/* 左側段位 */}
         <div className="space-y-4">
           <div className="bg-[#0f172a]/60 border border-slate-800/80 rounded-xl p-4 flex items-center gap-4">
-            <div className="w-14 h-14 relative shrink-0 flex items-center justify-center bg-slate-800/40 rounded-lg p-1">
+            <div className="w-14 h-14 relative shrink-0 flex items-center justify-center bg-slate-800/60 rounded-lg p-1 overflow-hidden">
               <img
                 src={getRankIcon(soloRank?.tier)}
                 alt="Solo Rank"
                 className="w-full h-full object-contain"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = getRankIcon('');
+                  (e.target as HTMLImageElement).src = PLACEHOLDER_IMG;
                 }}
               />
             </div>
@@ -343,13 +354,13 @@ export default function Home() {
           </div>
 
           <div className="bg-[#0f172a]/60 border border-slate-800/80 rounded-xl p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-lg bg-slate-800/80 border border-slate-700/60 flex items-center justify-center shrink-0 overflow-hidden p-1">
+            <div className="w-12 h-12 rounded-lg bg-slate-800/60 border border-slate-700/60 flex items-center justify-center shrink-0 overflow-hidden p-1">
               <img
                 src={getRankIcon(flexRank?.tier)}
                 alt="Flex Rank"
                 className="w-full h-full object-contain"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = getRankIcon('');
+                  (e.target as HTMLImageElement).src = PLACEHOLDER_IMG;
                 }}
               />
             </div>
@@ -401,10 +412,10 @@ export default function Home() {
                         <div className="flex items-center gap-2">
                           <img
                             src={getChampionImg(c.name)}
-                            className="w-5 h-5 rounded border border-slate-700 object-cover"
+                            className="w-5 h-5 rounded border border-slate-700 object-cover bg-slate-800"
                             alt=""
                             onError={(e) => {
-                              (e.target as HTMLImageElement).src = getChampionImg('Unknown');
+                              (e.target as HTMLImageElement).src = PLACEHOLDER_IMG;
                             }}
                           />
                           <span className="text-slate-300 font-medium">{c.name}</span>
@@ -420,7 +431,7 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* 首選角色與勝率 (修正柱狀圖高度與勝率計算顯示) */}
+                {/* 首選角色與勝率 */}
                 <div className="flex flex-col justify-center">
                   <div className="text-[11px] text-slate-400 font-bold mb-2">首選角色與勝率</div>
                   <div className="grid grid-cols-5 gap-1.5 items-end h-16 text-center">
@@ -469,7 +480,7 @@ export default function Home() {
                             alt={match.championName}
                             className="w-12 h-12 rounded-lg border border-slate-700 object-cover bg-slate-800"
                             onError={(e) => {
-                              (e.target as HTMLImageElement).src = getChampionImg('Unknown');
+                              (e.target as HTMLImageElement).src = PLACEHOLDER_IMG;
                             }}
                           />
                           <div>
@@ -496,10 +507,17 @@ export default function Home() {
 
                         <div className="hidden sm:flex gap-1">
                           {match.items?.map((item: number, idx: number) => (
-                            <div key={idx} className="w-6 h-6 bg-slate-800/60 rounded border border-slate-700/50 overflow-hidden">
-                              {item > 0 && getItemImg(item) && (
-                                <img src={getItemImg(item)!} alt="item" className="w-full h-full object-cover" />
-                              )}
+                            <div key={idx} className="w-6 h-6 bg-slate-800/60 rounded border border-slate-700/50 overflow-hidden flex items-center justify-center">
+                              {item > 0 && getItemImg(item) ? (
+                                <img
+                                  src={getItemImg(item)!}
+                                  alt=""
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                  }}
+                                />
+                              ) : null}
                             </div>
                           ))}
                         </div>
@@ -541,7 +559,7 @@ export default function Home() {
                                           className="w-6 h-6 rounded-md object-cover border border-slate-700 bg-slate-800"
                                           alt=""
                                           onError={(e) => {
-                                            (e.target as HTMLImageElement).src = getChampionImg('Unknown');
+                                            (e.target as HTMLImageElement).src = PLACEHOLDER_IMG;
                                           }}
                                         />
                                         <span className="font-medium text-slate-200 truncate">{p.summonerName || p.riotIdGameName || '玩家'}</span>
@@ -556,10 +574,17 @@ export default function Home() {
                                       </div>
                                       <div className="flex gap-1 shrink-0">
                                         {playerItems.map((itemId: number, itemIdx: number) => (
-                                          <div key={itemIdx} className="w-5 h-5 bg-slate-900/80 rounded border border-slate-700/60 overflow-hidden">
-                                            {itemId > 0 && getItemImg(itemId) && (
-                                              <img src={getItemImg(itemId)!} alt="" className="w-full h-full object-cover" />
-                                            )}
+                                          <div key={itemIdx} className="w-5 h-5 bg-slate-900/80 rounded border border-slate-700/60 overflow-hidden flex items-center justify-center">
+                                            {itemId > 0 && getItemImg(itemId) ? (
+                                              <img
+                                                src={getItemImg(itemId)!}
+                                                alt=""
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => {
+                                                  (e.target as HTMLImageElement).style.display = 'none';
+                                                }}
+                                              />
+                                            ) : null}
                                           </div>
                                         ))}
                                       </div>
@@ -589,7 +614,7 @@ export default function Home() {
                                           className="w-6 h-6 rounded-md object-cover border border-slate-700 bg-slate-800"
                                           alt=""
                                           onError={(e) => {
-                                            (e.target as HTMLImageElement).src = getChampionImg('Unknown');
+                                            (e.target as HTMLImageElement).src = PLACEHOLDER_IMG;
                                           }}
                                         />
                                         <span className="font-medium text-slate-200 truncate">{p.summonerName || p.riotIdGameName || '玩家'}</span>
@@ -604,10 +629,17 @@ export default function Home() {
                                       </div>
                                       <div className="flex gap-1 shrink-0">
                                         {playerItems.map((itemId: number, itemIdx: number) => (
-                                          <div key={itemIdx} className="w-5 h-5 bg-slate-900/80 rounded border border-slate-700/60 overflow-hidden">
-                                            {itemId > 0 && getItemImg(itemId) && (
-                                              <img src={getItemImg(itemId)!} alt="" className="w-full h-full object-cover" />
-                                            )}
+                                          <div key={itemIdx} className="w-5 h-5 bg-slate-900/80 rounded border border-slate-700/60 overflow-hidden flex items-center justify-center">
+                                            {itemId > 0 && getItemImg(itemId) ? (
+                                              <img
+                                                src={getItemImg(itemId)!}
+                                                alt=""
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => {
+                                                  (e.target as HTMLImageElement).style.display = 'none';
+                                                }}
+                                              />
+                                            ) : null}
                                           </div>
                                         ))}
                                       </div>
@@ -702,9 +734,24 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* 修正：角色路線分佈條形圖動態比例計算 */}
               <div className="bg-[#0f172a]/60 border border-slate-800/80 rounded-xl p-5">
                 <div className="text-xs font-bold text-slate-300 mb-3">角色路線分佈</div>
-                <div className="w-full h-3 bg-purple-600 rounded-full mb-4"></div>
+                <div className="w-full h-3 bg-[#070a12] rounded-full overflow-hidden flex mb-4 border border-slate-800/60">
+                  {(['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'] as const).map((key) => {
+                    const count = styleStats.roles[key];
+                    const percent = styleStats.totalGames > 0 ? (count / styleStats.totalGames) * 100 : 0;
+                    if (percent === 0) return null;
+                    return (
+                      <div
+                        key={key}
+                        className={`h-full ${roleColors[key]} transition-all duration-300`}
+                        style={{ width: `${percent}%` }}
+                        title={`${key}: ${Math.round(percent)}%`}
+                      />
+                    );
+                  })}
+                </div>
                 <div className="grid grid-cols-5 gap-2 text-center text-xs">
                   {['上路', '打野', '中路', '下路', '輔助'].map((roleName, idx) => {
                     const keys = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'] as const;
@@ -775,7 +822,7 @@ export default function Home() {
                         alt={champ.name}
                         className="w-10 h-10 rounded-lg object-cover border border-slate-700/50 bg-slate-800"
                         onError={(e) => {
-                          (e.target as HTMLImageElement).src = getChampionImg('Unknown');
+                          (e.target as HTMLImageElement).src = PLACEHOLDER_IMG;
                         }}
                       />
                       <div>
