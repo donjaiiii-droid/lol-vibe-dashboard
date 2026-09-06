@@ -136,7 +136,7 @@ export default function Home() {
 
   const styleStats = getStyleAnalytics();
 
-  // 2. 精準計算英雄專精數據 (Champions 頁面用)
+  // 2. 精準計算英雄專精數據 (Champions 頁面用，修復 DPM / CS 0 的問題)
   const getChampionStats = () => {
     if (!data?.matches || data.matches.length === 0) return [];
     const statsMap: Record<string, any> = {};
@@ -159,9 +159,18 @@ export default function Home() {
         };
       }
 
+      // 時間計算 fallback
       const matchDurationMin = (m.gameDuration || 1) / 60;
-      const matchCs = m.cs ?? m.totalMinionsKilled ?? 0;
-      const matchDamage = m.totalDamageDealtToChampions ?? (m.dpm ? m.dpm * matchDurationMin : 0);
+      
+      // CS fallback: cs / totalMinionsKilled / neutralMinionsKilled
+      const matchCs =
+        m.cs ??
+        (m.totalMinionsKilled || 0) + (m.neutralMinionsKilled || 0);
+
+      // Damage fallback: totalDamageDealtToChampions / dpm
+      const matchDamage =
+        m.totalDamageDealtToChampions ??
+        (m.dpm ? m.dpm * matchDurationMin : 0);
 
       statsMap[name].games += 1;
       if (m.win) statsMap[name].wins += 1;
@@ -353,7 +362,7 @@ export default function Home() {
                               </span>
                             </div>
                             <div className="text-xs text-slate-400 mt-1">
-                              CS: {match.cs ?? match.totalMinionsKilled ?? 0} ({match.csPerMin || 0}/m)
+                              CS: {match.cs ?? (match.totalMinionsKilled || 0) + (match.neutralMinionsKilled || 0)} ({match.csPerMin || 0}/m)
                             </div>
                           </div>
                         </div>
@@ -392,46 +401,104 @@ export default function Home() {
                         </div>
                       </div>
 
-                      {/* 展開詳情 */}
+                      {/* 展開詳情：包含 10 人裝備/傷害/金幣與詳細戰績 */}
                       {isExpanded && match.participants && (
                         <div className="border-t border-slate-800/80 bg-slate-900/90 p-4 space-y-4">
+                          {/* 藍隊 */}
                           <div>
-                            <div className="text-xs font-bold text-blue-400 mb-2">藍隊</div>
-                            <div className="space-y-1">
+                            <div className="text-xs font-bold text-blue-400 mb-2 flex justify-between items-center">
+                              <span>藍隊 (Team 100)</span>
+                              <span className="text-slate-500 font-normal">KDA / 傷害 / 金幣 / 裝備</span>
+                            </div>
+                            <div className="space-y-1.5">
                               {match.participants
                                 .filter((p: any) => p.teamId === 100)
-                                .map((p: any, idx: number) => (
-                                  <div key={idx} className="flex items-center justify-between text-xs py-1.5 px-3 rounded bg-slate-800/40">
-                                    <div className="flex items-center gap-2">
-                                      <img src={getChampionImg(p.championName)} className="w-5 h-5 rounded-full" alt="" />
-                                      <span className="font-medium text-slate-200">{p.summonerName}</span>
+                                .map((p: any, idx: number) => {
+                                  const playerItems = [p.item0, p.item1, p.item2, p.item3, p.item4, p.item5, p.item6];
+                                  const pCs = p.cs ?? (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0);
+
+                                  return (
+                                    <div key={idx} className="flex flex-wrap md:flex-nowrap items-center justify-between text-xs py-2 px-3 rounded bg-slate-800/40 gap-2">
+                                      {/* 玩家名稱與英雄 */}
+                                      <div className="flex items-center gap-2 w-44 shrink-0">
+                                        <img src={getChampionImg(p.championName)} className="w-6 h-6 rounded-md object-cover border border-slate-700" alt="" />
+                                        <span className="font-medium text-slate-200 truncate">{p.summonerName || p.riotIdGameName || '玩家'}</span>
+                                      </div>
+
+                                      {/* KDA & CS */}
+                                      <div className="flex items-center gap-3 text-slate-300 w-36 shrink-0 justify-center">
+                                        <div>{p.kills} / <span className="text-red-400">{p.deaths}</span> / {p.assists}</div>
+                                        <div className="text-slate-400 text-[11px]">{pCs} CS</div>
+                                      </div>
+
+                                      {/* 傷害與金幣 */}
+                                      <div className="text-center w-28 shrink-0 text-[11px]">
+                                        <div className="text-slate-200 font-medium">💥 {p.totalDamageDealtToChampions?.toLocaleString() || 0}</div>
+                                        <div className="text-amber-400">💰 {p.goldEarned?.toLocaleString() || 0}</div>
+                                      </div>
+
+                                      {/* 玩家裝備 */}
+                                      <div className="flex gap-1 shrink-0">
+                                        {playerItems.map((itemId: number, itemIdx: number) => (
+                                          <div key={itemIdx} className="w-5 h-5 bg-slate-900/80 rounded border border-slate-700/60 overflow-hidden">
+                                            {itemId > 0 && getItemImg(itemId) && (
+                                              <img src={getItemImg(itemId)!} alt="" className="w-full h-full object-cover" />
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
                                     </div>
-                                    <div className="flex items-center gap-4 text-slate-400">
-                                      <div>{p.kills} / <span className="text-red-400">{p.deaths}</span> / {p.assists}</div>
-                                      <div className="w-12 text-right">{p.cs ?? p.totalMinionsKilled ?? 0} CS</div>
-                                    </div>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                             </div>
                           </div>
 
+                          {/* 紅隊 */}
                           <div>
-                            <div className="text-xs font-bold text-red-400 mb-2">紅隊</div>
-                            <div className="space-y-1">
+                            <div className="text-xs font-bold text-red-400 mb-2 flex justify-between items-center">
+                              <span>紅隊 (Team 200)</span>
+                              <span className="text-slate-500 font-normal">KDA / 傷害 / 金幣 / 裝備</span>
+                            </div>
+                            <div className="space-y-1.5">
                               {match.participants
                                 .filter((p: any) => p.teamId === 200)
-                                .map((p: any, idx: number) => (
-                                  <div key={idx} className="flex items-center justify-between text-xs py-1.5 px-3 rounded bg-slate-800/40">
-                                    <div className="flex items-center gap-2">
-                                      <img src={getChampionImg(p.championName)} className="w-5 h-5 rounded-full" alt="" />
-                                      <span className="font-medium text-slate-200">{p.summonerName}</span>
+                                .map((p: any, idx: number) => {
+                                  const playerItems = [p.item0, p.item1, p.item2, p.item3, p.item4, p.item5, p.item6];
+                                  const pCs = p.cs ?? (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0);
+
+                                  return (
+                                    <div key={idx} className="flex flex-wrap md:flex-nowrap items-center justify-between text-xs py-2 px-3 rounded bg-slate-800/40 gap-2">
+                                      {/* 玩家名稱與英雄 */}
+                                      <div className="flex items-center gap-2 w-44 shrink-0">
+                                        <img src={getChampionImg(p.championName)} className="w-6 h-6 rounded-md object-cover border border-slate-700" alt="" />
+                                        <span className="font-medium text-slate-200 truncate">{p.summonerName || p.riotIdGameName || '玩家'}</span>
+                                      </div>
+
+                                      {/* KDA & CS */}
+                                      <div className="flex items-center gap-3 text-slate-300 w-36 shrink-0 justify-center">
+                                        <div>{p.kills} / <span className="text-red-400">{p.deaths}</span> / {p.assists}</div>
+                                        <div className="text-slate-400 text-[11px]">{pCs} CS</div>
+                                      </div>
+
+                                      {/* 傷害與金幣 */}
+                                      <div className="text-center w-28 shrink-0 text-[11px]">
+                                        <div className="text-slate-200 font-medium">💥 {p.totalDamageDealtToChampions?.toLocaleString() || 0}</div>
+                                        <div className="text-amber-400">💰 {p.goldEarned?.toLocaleString() || 0}</div>
+                                      </div>
+
+                                      {/* 玩家裝備 */}
+                                      <div className="flex gap-1 shrink-0">
+                                        {playerItems.map((itemId: number, itemIdx: number) => (
+                                          <div key={itemIdx} className="w-5 h-5 bg-slate-900/80 rounded border border-slate-700/60 overflow-hidden">
+                                            {itemId > 0 && getItemImg(itemId) && (
+                                              <img src={getItemImg(itemId)!} alt="" className="w-full h-full object-cover" />
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
                                     </div>
-                                    <div className="flex items-center gap-4 text-slate-400">
-                                      <div>{p.kills} / <span className="text-red-400">{p.deaths}</span> / {p.assists}</div>
-                                      <div className="w-12 text-right">{p.cs ?? p.totalMinionsKilled ?? 0} CS</div>
-                                    </div>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                             </div>
                           </div>
                         </div>
@@ -564,7 +631,7 @@ export default function Home() {
                 />
               </div>
 
-              {/* 英雄列表 */}
+              {/* 英雄列表 (保持原版排版與欄位) */}
               <div className="divide-y divide-slate-800/60">
                 {championStats.map((champ: any) => (
                   <div key={champ.name} className="py-3 flex items-center justify-between hover:bg-slate-800/30 px-2 rounded-lg transition-colors">
@@ -599,7 +666,7 @@ export default function Home() {
                         {champ.kdaRatio}:1 <span className="text-slate-400 font-normal">({champ.avgKp}% 參戰)</span>
                       </div>
                       <div className="text-[11px] text-slate-400 mt-0.5">
-                        {champ.avgKills} / <span className="text-red-400">{champ.avgDeaths}</span> / {champ.avgAssists}
+                        {champ.avgKills} / <span className="text-red-400">{champ.avgDeaths}</span> / {champ.assists ? champ.avgAssists : champ.avgAssists}
                       </div>
                     </div>
 
