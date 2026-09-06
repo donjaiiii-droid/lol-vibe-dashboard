@@ -4,7 +4,6 @@ export const maxDuration = 30;
 
 const API_KEY = process.env.RIOT_API_KEY;
 
-// 映射表：matchRouting 專供 Match-v5 使用
 const REGION_MAPPING: Record<string, { accountRouting: string; matchRouting: string; platform: string }> = {
   kr: { accountRouting: 'asia', matchRouting: 'asia', platform: 'kr' },
   tw2: { accountRouting: 'asia', matchRouting: 'sea', platform: 'tw2' },
@@ -29,7 +28,7 @@ export async function GET(request: Request) {
   const regionConfig = REGION_MAPPING[region.toLowerCase()] || REGION_MAPPING['kr'];
 
   try {
-    // 1. 抓取 Account (PUUID) - 使用 accountRouting ('asia' for TW/KR)
+    // 1. 抓取 Account (PUUID)
     const accountRes = await fetch(
       `https://${regionConfig.accountRouting}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}?api_key=${API_KEY}`,
       { cache: 'no-store' }
@@ -45,9 +44,8 @@ export async function GET(request: Request) {
     const accountData = await accountRes.json();
     const puuid = accountData.puuid;
 
-    // 2. 抓取段位 (League-v4) - 使用 platform ('tw2')
+    // 2. 抓取段位 (League-v4)
     let ranks: any[] = [];
-    
     try {
       const leagueRes = await fetch(
         `https://${regionConfig.platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}?api_key=${API_KEY}`,
@@ -58,12 +56,12 @@ export async function GET(request: Request) {
         ranks = await leagueRes.json();
       }
     } catch (e) {
-      console.warn('League fetch ignored error:', e);
+      console.warn('League fetch error:', e);
     }
 
-    // 3. 抓取 20 場對戰 ID 列表 - 使用 matchRouting ('sea' for TW)
+    // 3. 抓取對戰 ID 列表（加上 type=ranked 強制過濾只抓積分賽）
     const matchIdsRes = await fetch(
-      `https://${regionConfig.matchRouting}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=0&count=20&api_key=${API_KEY}`,
+      `https://${regionConfig.matchRouting}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?type=ranked&start=0&count=20&api_key=${API_KEY}`,
       { cache: 'no-store' }
     );
 
@@ -85,6 +83,7 @@ export async function GET(request: Request) {
           
           return {
             matchId: detail.metadata?.matchId,
+            queueId: detail.info?.queueId,
             gameMode: detail.info?.gameMode,
             gameDuration: detail.info?.gameDuration,
             win: playerParticipant?.win || false,
