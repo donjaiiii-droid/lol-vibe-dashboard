@@ -1,878 +1,625 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-const SPELL_MAP: Record<number, string> = {
-  1: 'SummonerBoost',
-  3: 'SummonerExhaust',
-  4: 'SummonerFlash',
-  6: 'SummonerHaste',
-  7: 'SummonerHeal',
-  11: 'SummonerSmite',
-  12: 'SummonerTeleport',
-  13: 'SummonerMana',
-  14: 'SummonerDot',
-  21: 'SummonerBarrier',
-  32: 'SummonerSnowball',
+// Helper: 處理英雄頭像 CDN 連結與新英雄/拼字相容
+const getChampionImg = (name: string) => {
+  if (!name || name === 'Locke' || name === 'Unknown') {
+    return 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Square.png';
+  }
+  const nameMap: Record<string, string> = {
+    FiddleSticks: 'Fiddlesticks',
+    Galio: 'Galio',
+  };
+  const cleanName = nameMap[name] || name;
+  return `https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/${cleanName}.png`;
 };
 
-const RUNE_MAP: Record<number, string> = {
-  8005: 'perk-images/Styles/Precision/PressTheAttack/PressTheAttack.png',
-  8008: 'perk-images/Styles/Precision/LethalTempo/LethalTempoTemp.png',
-  8021: 'perk-images/Styles/Precision/FleetFootwork/FleetFootwork.png',
-  8010: 'perk-images/Styles/Precision/Conqueror/Conqueror.png',
-  8112: 'perk-images/Styles/Domination/Electrocute/Electrocute.png',
-  8124: 'perk-images/Styles/Domination/Predator/Predator.png',
-  8128: 'perk-images/Styles/Domination/DarkHarvest/DarkHarvest.png',
-  9923: 'perk-images/Styles/Domination/HailOfBlades/HailOfBlades.png',
-  8214: 'perk-images/Styles/Sorcery/SummonAery/SummonAery.png',
-  8229: 'perk-images/Styles/Sorcery/ArcaneComet/ArcaneComet.png',
-  8230: 'perk-images/Styles/Sorcery/PhaseRush/PhaseRush.png',
-  8437: 'perk-images/Styles/Resolve/GraspOfTheUndying/GraspOfTheUndying.png',
-  8439: 'perk-images/Styles/Resolve/VeteranAftershock/VeteranAftershock.png',
-  8465: 'perk-images/Styles/Resolve/Guardian/Guardian.png',
-  8351: 'perk-images/Styles/Inspiration/GlacialAugment/GlacialAugment.png',
-  8360: 'perk-images/Styles/Inspiration/UnsealedSpellbook/UnsealedSpellbook.png',
-  8369: 'perk-images/Styles/Inspiration/FirstStrike/FirstStrike.png',
+// Helper: 處理裝備圖片 CDN
+const getItemImg = (itemId: number) => {
+  if (!itemId || itemId === 0) return null;
+  return `https://ddragon.leagueoflegends.com/cdn/14.5.1/img/item/${itemId}.png`;
 };
 
-const POSITION_MAP: Record<string, { label: string; color: string }> = {
-  TOP: { label: '上路', color: 'bg-blue-500 shadow-blue-500/50' },
-  JUNGLE: { label: '打野', color: 'bg-emerald-500 shadow-emerald-500/50' },
-  MIDDLE: { label: '中路', color: 'bg-amber-500 shadow-amber-500/50' },
-  BOTTOM: { label: '下路', color: 'bg-indigo-500 shadow-indigo-500/50' },
-  UTILITY: { label: '輔助', color: 'bg-purple-500 shadow-purple-500/50' },
+// 時間格式化 Helper (秒 -> MM:SS)
+const formatDuration = (seconds: number) => {
+  if (!seconds) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 };
-
-const DAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
 export default function Home() {
-  const [riotId, setRiotId] = useState('Faker#TW2');
+  const [activeTab, setActiveTab] = useState<'概要' | '風格' | 'Champions'>('Champions');
+  const [region, setRegion] = useState('kr');
+  const [riotId, setRiotId] = useState('Hide on bush#KR1');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'style' | 'champions'>('overview');
-  const [expandedMatch, setExpandedMatch] = useState<string | null>(null);
-  const [searchChampFilter, setSearchChampFilter] = useState('');
- const [region, setRegion] = useState('tw2');
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const handleSearch = async () => {
+  // 控制點擊展開每場對戰細節
+  const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
+
+  const fetchPlayerData = async () => {
     if (!riotId.includes('#')) {
-      setError('請輸入完整的 Riot ID (例如: Faker#KR1)');
+      setError('請輸入完整的 Riot ID (例如: Hide on bush#KR1)');
       return;
     }
     setLoading(true);
     setError('');
     try {
-      const searchId = riotId.trim();
-const res = await fetch(`/api/matches?riotId=${encodeURIComponent(searchId)}&region=${region}`);
-      const result = await res.json();
-      console.log("【API 回傳資料】", result);
-      if (!res.ok) throw new Error(result.error || '連線失敗');
-      setData(result);
+      const res = await fetch(`/api/matches?riotId=${encodeURIComponent(riotId)}&region=${region}`);
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || '抓取資料失敗');
+      }
+      setData(json);
     } catch (err: any) {
-      setError(err.message || '發生錯誤，請稍後再試');
+      setError(err.message || '發生未知錯誤');
     } finally {
       setLoading(false);
     }
   };
 
-  const matches = data?.matches || [];
-  const filteredMatches = matches;
+  useEffect(() => {
+    fetchPlayerData();
+  }, []);
 
-  // 概要數據
-  const totalGames = filteredMatches.length;
-  const wins = filteredMatches.filter((m: any) => m.win).length;
-  const losses = totalGames - wins;
-  const winRate = totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0;
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchPlayerData();
+  };
 
-  const totalKills = filteredMatches.reduce((acc: number, m: any) => acc + m.kills, 0);
-  const totalDeaths = filteredMatches.reduce((acc: number, m: any) => acc + m.deaths, 0);
-  const totalAssists = filteredMatches.reduce((acc: number, m: any) => acc + m.assists, 0);
+  const toggleExpand = (matchId: string) => {
+    setExpandedMatchId(expandedMatchId === matchId ? null : matchId);
+  };
 
-  const avgKills = totalGames > 0 ? (totalKills / totalGames).toFixed(1) : '0.0';
-  const avgDeaths = totalGames > 0 ? (totalDeaths / totalGames).toFixed(1) : '0.0';
-  const avgAssists = totalGames > 0 ? (totalAssists / totalGames).toFixed(1) : '0.0';
-  const kdaRatio = totalDeaths > 0 ? ((totalKills + totalAssists) / totalDeaths).toFixed(2) : 'Perfect';
+  // 取得單雙排與彈性積分資料
+  const soloRank = data?.ranks?.find((r: any) => r.queueType === 'RANKED_SOLO_5x5');
+  const flexRank = data?.ranks?.find((r: any) => r.queueType === 'RANKED_FLEX_SR');
 
-  const avgKP = totalGames > 0 
-    ? Math.round(filteredMatches.reduce((acc: number, m: any) => acc + (m.killParticipation || 0), 0) / totalGames) 
-    : 0;
-
-  const avgGameTimeSeconds = totalGames > 0
-    ? Math.round(filteredMatches.reduce((acc: number, m: any) => acc + (m.gameDurationSeconds || 0), 0) / totalGames)
-    : 0;
-  const avgGameTimeStr = `${Math.floor(avgGameTimeSeconds / 60)}:${String(avgGameTimeSeconds % 60).padStart(2, '0')}`;
-
-  // 風格數據
-  const blueGames = filteredMatches.filter((m: any) => m.side === 'blue');
-  const redGames = filteredMatches.filter((m: any) => m.side === 'red');
-  const blueWins = blueGames.filter((m: any) => m.win).length;
-  const redWins = redGames.filter((m: any) => m.win).length;
-
-  const blueWinRate = blueGames.length > 0 ? ((blueWins / blueGames.length) * 100).toFixed(1) : '0.0';
-  const redWinRate = redGames.length > 0 ? ((redWins / redGames.length) * 100).toFixed(1) : '0.0';
-  const bluePickPct = totalGames > 0 ? ((blueGames.length / totalGames) * 100).toFixed(1) : '0.0';
-  const redPickPct = totalGames > 0 ? ((redGames.length / totalGames) * 100).toFixed(1) : '0.0';
-
-  const uniqueChamps = Array.from(new Set(filteredMatches.map((m: any) => m.championName))).length;
-  const champPoolPct = Math.round((uniqueChamps / 173) * 100);
-
-  const positionCounts: Record<string, number> = { TOP: 0, JUNGLE: 0, MIDDLE: 0, BOTTOM: 0, UTILITY: 0 };
-  filteredMatches.forEach((m: any) => {
-    const pos = m.position && positionCounts[m.position] !== undefined ? m.position : 'UTILITY';
-    positionCounts[pos] += 1;
-  });
-
-  const dayCounts = [0, 0, 0, 0, 0, 0, 0];
-  filteredMatches.forEach((m: any) => {
-    if (m.dayOfWeek !== undefined) dayCounts[m.dayOfWeek] += 1;
-  });
-  const maxDayCount = Math.max(...dayCounts, 1);
-
-  // Champions 表格計算
-  const champStatsMap: Record<string, { 
-    name: string; 
-    games: number; 
-    wins: number; 
-    kills: number; 
-    deaths: number; 
-    assists: number;
-    kpSum: number;
-    damageSum: number;
-    csSum: number;
-    durationMinutesSum: number;
-  }> = {};
-
-  filteredMatches.forEach((m: any) => {
-    if (!champStatsMap[m.championName]) {
-      champStatsMap[m.championName] = { 
-        name: m.championName, 
-        games: 0, 
-        wins: 0, 
-        kills: 0, 
-        deaths: 0, 
-        assists: 0,
-        kpSum: 0,
-        damageSum: 0,
-        csSum: 0,
-        durationMinutesSum: 0,
+  // 1. 計算風格分析數據
+  const getStyleAnalytics = () => {
+    const matches = data?.matches || [];
+    const totalGames = matches.length;
+    if (totalGames === 0) {
+      return {
+        avgDuration: '0:00',
+        blueGames: 0,
+        redGames: 0,
+        blueWinRate: 0,
+        redWinRate: 0,
+        bluePickRate: 0,
+        redPickRate: 0,
+        weeklyActivity: [0, 0, 0, 0, 0, 0, 0],
       };
     }
-    const c = champStatsMap[m.championName];
-    c.games += 1;
-    if (m.win) c.wins += 1;
-    c.kills += m.kills;
-    c.deaths += m.deaths;
-    c.assists += m.assists;
-    c.kpSum += m.killParticipation || 0;
-    c.damageSum += m.totalDamage || 0;
-    c.csSum += m.totalCs || 0;
-    c.durationMinutesSum += (m.gameDurationSeconds || 1) / 60;
-  });
 
-  const allChampionList = Object.values(champStatsMap).sort((a, b) => b.games - a.games);
-  const filteredChampList = allChampionList.filter((c) => 
-    c.name.toLowerCase().includes(searchChampFilter.toLowerCase())
-  );
+    const totalDurationSec = matches.reduce((sum: number, m: any) => sum + (m.gameDuration || 0), 0);
+    const avgDuration = formatDuration(Math.round(totalDurationSec / totalGames));
 
-  const topChampions = allChampionList.slice(0, 3);
+    const blueMatches = matches.filter((m: any) => m.teamId === 100 || m.isBlueSide);
+    const redMatches = matches.filter((m: any) => m.teamId === 200 || (!m.isBlueSide && m.teamId !== 100));
 
-  const getRankBadge = (tier: string) => {
-    if (!tier) return null;
-    return `https://opgg-static.akamaized.net/images/medals_new/${tier.toLowerCase()}.png`;
+    const blueGames = blueMatches.length;
+    const redGames = redMatches.length;
+
+    const blueWins = blueMatches.filter((m: any) => m.win).length;
+    const redWins = redMatches.filter((m: any) => m.win).length;
+
+    const blueWinRate = blueGames > 0 ? Math.round((blueWins / blueGames) * 100) : 0;
+    const redWinRate = redGames > 0 ? Math.round((redWins / redGames) * 100) : 0;
+
+    const bluePickRate = Math.round((blueGames / totalGames) * 100);
+    const redPickRate = Math.round((redGames / totalGames) * 100);
+
+    const weeklyActivity = [0, 0, 0, 0, 0, 0, 0];
+    matches.forEach((m: any) => {
+      if (m.gameCreation) {
+        const day = new Date(m.gameCreation).getDay();
+        weeklyActivity[day] += 1;
+      }
+    });
+
+    return {
+      avgDuration,
+      blueGames,
+      redGames,
+      blueWinRate,
+      redWinRate,
+      bluePickRate,
+      redPickRate,
+      weeklyActivity,
+    };
   };
-// 將 API 回傳的 league 陣列轉為 UI 讀取的 ranks 結構
-const soloRank = data?.ranks?.find((item: any) => item.queueType === 'RANKED_SOLO_5x5');
-const flexRank = data?.ranks?.find((item: any) => item.queueType === 'RANKED_FLEX_SR');
 
-const ranks = {
-  solo: soloRank ? {
-    tier: soloRank.tier,
-    rank: soloRank.rank,
-    leaguePoints: soloRank.leaguePoints,
-    wins: soloRank.wins,
-    losses: soloRank.losses,
-    winRate: Math.round((soloRank.wins / (soloRank.wins + soloRank.losses)) * 100)
-  } : null,
-  flex: flexRank ? {
-    tier: flexRank.tier,
-    rank: flexRank.rank,
-    leaguePoints: flexRank.leaguePoints,
-    wins: flexRank.wins,
-    losses: flexRank.losses,
-    winRate: Math.round((flexRank.wins / (flexRank.wins + flexRank.losses)) * 100)
-  } : null
-};
+  const styleStats = getStyleAnalytics();
+
+  // 2. 精準計算英雄專精數據 (Champions 頁面用)
+  const getChampionStats = () => {
+    if (!data?.matches || data.matches.length === 0) return [];
+    const statsMap: Record<string, any> = {};
+
+    data.matches.forEach((m: any) => {
+      const name = m.championName || 'Unknown';
+      if (!statsMap[name]) {
+        statsMap[name] = {
+          name,
+          games: 0,
+          wins: 0,
+          losses: 0,
+          kills: 0,
+          deaths: 0,
+          assists: 0,
+          totalDamage: 0,
+          totalCs: 0,
+          totalGameDurationMin: 0,
+          kpSum: 0,
+        };
+      }
+
+      const matchDurationMin = (m.gameDuration || 1) / 60;
+      const matchCs = m.cs ?? m.totalMinionsKilled ?? 0;
+      const matchDamage = m.totalDamageDealtToChampions ?? (m.dpm ? m.dpm * matchDurationMin : 0);
+
+      statsMap[name].games += 1;
+      if (m.win) statsMap[name].wins += 1;
+      else statsMap[name].losses += 1;
+
+      statsMap[name].kills += m.kills || 0;
+      statsMap[name].deaths += m.deaths || 0;
+      statsMap[name].assists += m.assists || 0;
+      statsMap[name].totalDamage += matchDamage;
+      statsMap[name].totalCs += matchCs;
+      statsMap[name].totalGameDurationMin += matchDurationMin;
+      statsMap[name].kpSum += m.killParticipation || 0;
+    });
+
+    return Object.values(statsMap)
+      .map((champ: any) => {
+        const avgKills = champ.kills / champ.games;
+        const avgDeaths = champ.deaths / champ.games;
+        const avgAssists = champ.assists / champ.games;
+        const kdaRatio =
+          avgDeaths === 0
+            ? 'Perfect'
+            : ((avgKills + avgAssists) / avgDeaths).toFixed(2);
+
+        const totalMin = champ.totalGameDurationMin || 1;
+        const avgDpm = Math.round(champ.totalDamage / totalMin);
+        const avgCs = (champ.totalCs / champ.games).toFixed(1);
+        const avgCsPerMin = (champ.totalCs / totalMin).toFixed(1);
+        const avgKp = Math.round(champ.kpSum / champ.games);
+
+        return {
+          ...champ,
+          avgKills: avgKills.toFixed(1),
+          avgDeaths: avgDeaths.toFixed(1),
+          avgAssists: avgAssists.toFixed(1),
+          kdaRatio,
+          avgDpm,
+          avgCs,
+          avgCsPerMin,
+          avgKp,
+          winRate: Math.round((champ.wins / champ.games) * 100),
+        };
+      })
+      .filter((champ: any) =>
+        champ.name.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      .sort((a: any, b: any) => b.games - a.games);
+  };
+
+  const championStats = getChampionStats();
+
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans antialiased">
-      <div className="max-w-5xl mx-auto space-y-6">
-        
-        {/* 頂部 Tag 導覽列 */}
-        <div className="flex items-center justify-between border-b border-slate-700/80 pb-4">
-          <div className="flex gap-6 text-sm font-black tracking-wider uppercase">
+    <main className="min-h-screen bg-[#090d16] text-slate-100 p-4 md:p-8 font-sans">
+      {/* 頂部 Tab 導覽 */}
+      <header className="max-w-6xl mx-auto flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
+        <div className="flex gap-6">
+          {(['概要', '風格', 'Champions'] as const).map((tab) => (
             <button
-              onClick={() => setActiveTab('overview')}
-              className={`relative pb-2 transition-all ${
-                activeTab === 'overview'
-                  ? 'text-blue-400 font-black after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-blue-400'
-                  : 'text-slate-300 hover:text-white font-bold'
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`text-sm font-bold pb-2 transition-colors relative ${
+                activeTab === tab ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              概要
+              {tab}
             </button>
-            <button
-              onClick={() => setActiveTab('style')}
-              className={`relative pb-2 transition-all ${
-                activeTab === 'style'
-                  ? 'text-blue-400 font-black after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-blue-400'
-                  : 'text-slate-300 hover:text-white font-bold'
-              }`}
-            >
-              風格
-            </button>
-            <button
-              onClick={() => setActiveTab('champions')}
-              className={`relative pb-2 transition-all ${
-                activeTab === 'champions'
-                  ? 'text-blue-400 font-black after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-blue-400'
-                  : 'text-slate-300 hover:text-white font-bold'
-              }`}
-            >
-              Champions
-            </button>
-          </div>
-          <span className="text-xs text-slate-400 font-extrabold tracking-wide">S2026 GG.ANALYTICS</span>
+          ))}
         </div>
+        <div className="text-xs text-slate-500 tracking-wider">S2026 GG.ANALYTICS</div>
+      </header>
 
-        {/* 搜尋列 */}
-        <div className="flex gap-3 max-w-md mx-auto">
-          <select 
-  value={region} 
-  onChange={(e) => setRegion(e.target.value)}
-  className="bg-slate-800 text-white px-3 py-2 rounded-lg border border-slate-700 focus:outline-none mr-2"
->
-  <option value="tw2">台服 (TW)</option>
-<option value="kr">韓服 (KR)</option>
-<option value="na1">美服 (NA)</option>
-<option value="euw1">歐服 (EUW)</option>
-</select>
+      {/* 搜尋欄 */}
+      <section className="max-w-6xl mx-auto mb-8">
+        <form onSubmit={handleSearch} className="flex gap-3 justify-center">
+          <select
+            value={region}
+            onChange={(e) => setRegion(e.target.value)}
+            className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
+          >
+            <option value="kr">韓服 (KR)</option>
+            <option value="tw2">台服 (TW)</option>
+            <option value="na1">美服 (NA)</option>
+            <option value="euw1">西歐 (EUW)</option>
+          </select>
+
           <input
             type="text"
             value={riotId}
             onChange={(e) => setRiotId(e.target.value)}
-            placeholder="Riot ID#Tag (例如: Fungz#TW2)"
-            className="flex-1 bg-slate-900 border border-slate-700 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 rounded-xl px-5 py-3 text-slate-100 placeholder-slate-400 outline-none transition-all shadow-md text-sm font-semibold"
+            placeholder="Riot ID #TAG (例如 Hide on bush#KR1)"
+            className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm w-80 focus:outline-none focus:border-blue-500"
           />
+
           <button
-            onClick={handleSearch}
+            type="submit"
             disabled={loading}
-            className="bg-blue-600 hover:bg-blue-500 active:scale-95 disabled:opacity-50 text-white font-black px-6 py-3 rounded-xl transition-all shadow-md text-sm tracking-wide"
+            className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 font-medium px-6 py-2 rounded-lg text-sm transition-colors"
           >
-            {loading ? '搜尋中...' : '搜尋'}
+            {loading ? '載入中...' : '搜尋'}
           </button>
+        </form>
+        {error && <p className="text-red-400 text-xs text-center mt-2">{error}</p>}
+      </section>
+
+      {/* 主要內容區 */}
+      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-6">
+        {/* 左側：段位資訊 */}
+        <div className="space-y-4">
+          <div className="bg-slate-800/40 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
+            <div className="w-12 h-12 bg-blue-900/30 rounded-full flex items-center justify-center text-xl">🏆</div>
+            <div>
+              <div className="text-xs text-slate-400 font-bold">單/雙排積分</div>
+              <div className="text-sm font-black text-slate-100">
+                {soloRank ? `${soloRank.tier} ${soloRank.rank}` : '未定級 (Unranked)'}
+              </div>
+              {soloRank && (
+                <div className="text-xs text-slate-400">
+                  <span className="text-blue-400 font-bold">{soloRank.leaguePoints} LP</span> · {soloRank.wins}勝 {soloRank.losses}敗 ({Math.round((soloRank.wins / (soloRank.wins + soloRank.losses)) * 100)}%)
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-slate-800/40 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
+            <div className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center text-xl">🛡️</div>
+            <div>
+              <div className="text-xs text-slate-400 font-bold">彈性積分</div>
+              <div className="text-sm font-black text-slate-100">
+                {flexRank ? `${flexRank.tier} ${flexRank.rank}` : '未定級 (Unranked)'}
+              </div>
+              {flexRank && (
+                <div className="text-xs text-slate-400">
+                  <span className="text-blue-400 font-bold">{flexRank.leaguePoints} LP</span> · {flexRank.wins}勝 {flexRank.losses}敗
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
-        {error && (
-          <div className="bg-red-950/80 border border-red-500 text-red-200 p-4 rounded-xl text-center text-xs font-bold">
-            {error}
-          </div>
-        )}
-
-        {data && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            
-            {/* 左側：段位面板 */}
-            <div className="space-y-4 md:col-span-1">
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex items-center gap-4">
-                {getRankBadge(ranks?.solo?.tier) ? (
-                  <img
-                    src={getRankBadge(ranks?.solo?.tier)!}
-                    alt="Solo Rank"
-                    className="w-16 h-16 object-contain filter drop-shadow"
-                    onError={(e: any) => { e.target.style.display = 'none'; }}
-                  />
-                ) : (
-                  <div className="w-14 h-14 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-slate-400 text-[10px] text-center uppercase tracking-wider">
-                    Unranked
+        {/* 右側：頁面切換 */}
+        <div className="md:col-span-3 space-y-4">
+          {/* 1. 概要分頁 */}
+          {activeTab === '概要' && (
+            <>
+              {data?.matches && data.matches.length > 0 && (
+                <div className="bg-slate-800/30 border border-slate-800 rounded-xl p-4 flex justify-between items-center text-xs">
+                  <div>
+                    <span className="font-bold">{data.matches.length} 場對戰</span>{' '}
+                    <span className="text-blue-400 font-bold">{data.matches.filter((m: any) => m.win).length}勝</span>{' '}
+                    <span className="text-red-400 font-bold">{data.matches.filter((m: any) => !m.win).length}敗</span>
                   </div>
-                )}
-                <div className="space-y-1">
-                  <span className="text-[11px] font-black text-slate-300 uppercase tracking-wider">單/雙排積分</span>
-                  <div className="text-base font-black text-white capitalize">
-                    {ranks?.solo ? `${ranks.solo.tier} ${ranks.solo.rank}` : '未定級 (Unranked)'}
+                  <div>
+                    平均 KDA:{' '}
+                    <span className="font-bold text-slate-100">
+                      {(
+                        data.matches.reduce((sum: number, m: any) => sum + (m.kda || 0), 0) / data.matches.length
+                      ).toFixed(2)}
+                    </span>
                   </div>
-                  {ranks?.solo && (
-                    <div className="text-xs text-slate-300 font-semibold">
-                      <span className="font-black text-blue-400">{ranks.solo.leaguePoints} LP</span> · {ranks.solo.wins}勝 {ranks.solo.losses}敗 ({ranks.solo.winRate}%)
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex items-center gap-4">
-                {getRankBadge(ranks?.flex?.tier) ? (
-                  <img
-                    src={getRankBadge(ranks?.flex?.tier)!}
-                    alt="Flex Rank"
-                    className="w-16 h-16 object-contain filter drop-shadow"
-                    onError={(e: any) => { e.target.style.display = 'none'; }}
-                  />
-                ) : (
-                  <div className="w-14 h-14 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-slate-400 text-[10px] text-center uppercase tracking-wider">
-                    Unranked
-                  </div>
-                )}
-                <div className="space-y-1">
-                  <span className="text-[11px] font-black text-slate-300 uppercase tracking-wider">彈性積分</span>
-                  <div className="text-base font-black text-white capitalize">
-                    {ranks?.flex ? `${ranks.flex.tier} ${ranks.flex.rank}` : '未定級 (Unranked)'}
-                  </div>
-                  {ranks?.flex && (
-                    <div className="text-xs text-slate-300 font-semibold">
-                      <span className="font-black text-blue-400">{ranks.flex.leaguePoints} LP</span> · {ranks.flex.wins}勝 {ranks.flex.losses}敗 ({ranks.flex.winRate}%)
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* 右側：內容區 (依 Tag 切換) */}
-            <div className="space-y-6 md:col-span-2">
-
-              {/* 切換三：Champions (英雄專精) */}
-              {activeTab === 'champions' && (
-                <div className="space-y-6">
-                  
-                  {/* 工具列 */}
-                  <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-lg">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black text-white tracking-wide">英雄專精數據</span>
-                      <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                        共 {allChampionList.length} 位
-                      </span>
-                    </div>
-
-                    <div className="relative">
-                      <select 
-  value={region} 
-  onChange={(e) => setRegion(e.target.value)}
-  className="bg-slate-800 text-white px-3 py-2 rounded-lg border border-slate-700 focus:outline-none mr-2"
->
-  <option value="tw2">台服 (TW)</option>
-  <option value="kr">韓服 (KR)</option>
-  <option value="na1">美服 (NA)</option>
-  <option value="euw1">歐服 (EUW)</option>
-</select>
-                      <input
-                        type="text"
-                        value={searchChampFilter}
-                        onChange={(e) => setSearchChampFilter(e.target.value)}
-                        placeholder="搜尋英雄..."
-                        className="bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-1.5 text-xs text-white placeholder-slate-400 outline-none focus:border-blue-400 w-44 font-semibold"
-                      />
-                    </div>
-                  </div>
-
-                  {/* 表格 */}
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs text-slate-200">
-                        <thead className="bg-slate-950 text-slate-300 text-[11px] uppercase tracking-wider font-black border-b border-slate-800">
-                          <tr>
-                            <th className="py-3.5 px-4">英雄</th>
-                            <th className="py-3.5 px-3 text-center">已遊玩</th>
-                            <th className="py-3.5 px-3">KDA / 參戰</th>
-                            <th className="py-3.5 px-3 text-right">DPM (傷害)</th>
-                            <th className="py-3.5 px-3 text-right">CS (小兵)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800">
-                          {filteredChampList.length === 0 ? (
-                            <tr>
-                              <td colSpan={5} className="py-10 text-center text-slate-400 font-bold">
-                                未找到符合條件的英雄數據
-                              </td>
-                            </tr>
-                          ) : (
-                            filteredChampList.map((c) => {
-                              const losses = c.games - c.wins;
-                              const cWinRate = Math.round((c.wins / c.games) * 100);
-                              const avgK = (c.kills / c.games).toFixed(1);
-                              const avgD = (c.deaths / c.games).toFixed(1);
-                              const avgA = (c.assists / c.games).toFixed(1);
-                              const cKda = c.deaths > 0 ? ((c.kills + c.assists) / c.deaths).toFixed(2) : 'Perfect';
-                              const avgKp = Math.round(c.kpSum / c.games);
-                              const avgDpm = Math.round(c.damageSum / c.durationMinutesSum);
-                              const avgCs = (c.csSum / c.games).toFixed(1);
-                              const csPerMin = (c.csSum / c.durationMinutesSum).toFixed(1);
-
-                              return (
-                                <tr key={c.name} className="hover:bg-slate-800/50 transition-colors">
-                                  <td className="py-3 px-4 font-black text-white">
-                                    <div className="flex items-center gap-3">
-                                      <img
-                                        src={`https://ddragon.leagueoflegends.com/cdn/14.1.1/img/champion/${c.name}.png`}
-                                        alt={c.name}
-                                        className="w-10 h-10 rounded-xl border border-slate-700 object-cover shadow"
-                                        onError={(e: any) => { e.target.src = 'https://ddragon.leagueoflegends.com/cdn/14.1.1/img/champion/Square_0.png'; }}
-                                      />
-                                      <span className="tracking-wide text-sm">{c.name}</span>
-                                    </div>
-                                  </td>
-
-                                  <td className="py-3 px-3 text-center">
-                                    <div className="flex flex-col items-center gap-1">
-                                      <div className="flex items-center gap-1.5 font-black text-[11px]">
-                                        <span className="text-blue-400">{c.wins}勝</span>
-                                        <span className="text-red-400">{losses}敗</span>
-                                        <span className={`ml-1 ${cWinRate >= 50 ? 'text-blue-400' : 'text-red-400'}`}>{cWinRate}%</span>
-                                      </div>
-                                      <div className="w-20 h-1.5 bg-slate-800 rounded-full overflow-hidden flex">
-                                        <div style={{ width: `${cWinRate}%` }} className="bg-blue-500 h-full" />
-                                        <div style={{ width: `${100 - cWinRate}%` }} className="bg-red-500 h-full" />
-                                      </div>
-                                    </div>
-                                  </td>
-
-                                  <td className="py-3 px-3">
-                                    <div>
-                                      <div className="font-black text-white flex items-center gap-1">
-                                        <span className="text-indigo-400">{cKda}:1</span>
-                                        <span className="text-[11px] text-slate-300 font-semibold">({avgKp}% 參戰)</span>
-                                      </div>
-                                      <div className="text-[11px] text-slate-300 font-bold">
-                                        {avgK} / <span className="text-red-400 font-black">{avgD}</span> / {avgA}
-                                      </div>
-                                    </div>
-                                  </td>
-
-                                  <td className="py-3 px-3 text-right">
-                                    <div className="font-black text-amber-300 text-xs">{avgDpm.toLocaleString()} /m</div>
-                                    <div className="text-[10px] text-slate-400 font-bold">每分鐘傷害</div>
-                                  </td>
-
-                                  <td className="py-3 px-3 text-right">
-                                    <div className="font-black text-white">{avgCs} CS</div>
-                                    <div className="text-[10px] text-slate-300 font-bold">({csPerMin}/m)</div>
-                                  </td>
-                                </tr>
-                              );
-                            })
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
                 </div>
               )}
 
-              {/* 切換二：風格 (Style) */}
-              {activeTab === 'style' && (
-                <div className="space-y-6">
-                  
-                  {/* 數據卡片 */}
-                  <div className="grid grid-cols-4 gap-2 bg-slate-900 border border-slate-800 p-4 rounded-2xl text-center shadow-lg">
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">場次</span>
-                      <p className="text-2xl font-black text-white mt-0.5">{totalGames}</p>
-                      <span className="text-[10px] text-slate-300 font-bold">{wins}勝 {losses}敗</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">勝率</span>
-                      <p className={`text-2xl font-black mt-0.5 ${winRate >= 50 ? 'text-blue-400' : 'text-red-400'}`}>{winRate}%</p>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">KDA</span>
-                      <p className="text-2xl font-black text-indigo-400 mt-0.5">{kdaRatio}</p>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">英雄池</span>
-                      <p className="text-2xl font-black text-amber-300 mt-0.5">{uniqueChamps}</p>
-                      <span className="text-[10px] text-slate-300 font-bold">{champPoolPct}% 涵蓋率</span>
-                    </div>
-                  </div>
+              {/* 對戰清單 */}
+              <div className="space-y-3">
+                {data?.matches?.map((match: any) => {
+                  const isExpanded = expandedMatchId === match.matchId;
 
-                  {/* 績效與側面 */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    
-                    <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4 shadow-lg">
-                      <h3 className="text-xs font-black text-slate-200 uppercase tracking-wider">績效指標</h3>
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                          <span className="text-slate-400 text-[11px] font-extrabold">勝率</span>
-                          <p className="text-xl font-black text-white mt-1">{winRate}%</p>
-                        </div>
-                        <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                          <span className="text-slate-400 text-[11px] font-extrabold">平均 KDA</span>
-                          <p className="text-xl font-black text-indigo-400 mt-1">{kdaRatio}</p>
-                        </div>
-                        <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                          <span className="text-slate-400 text-[11px] font-extrabold">擊殺參與率</span>
-                          <p className="text-xl font-black text-red-400 mt-1">{avgKP}%</p>
-                        </div>
-                        <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                          <span className="text-slate-400 text-[11px] font-extrabold">平均遊戲時間</span>
-                          <p className="text-xl font-black text-emerald-400 mt-1">{avgGameTimeStr}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4 shadow-lg">
-                      <h3 className="text-xs font-black text-slate-200 uppercase tracking-wider">藍紅方勝率與選角率</h3>
-                      <div className="space-y-4 text-xs font-bold">
-                        <div>
-                          <div className="flex justify-between mb-1.5 text-[11px]">
-                            <span className="text-blue-400 font-black">藍色勝率 {blueWinRate}%</span>
-                            <span className="text-red-400 font-black">紅色勝率 {redWinRate}%</span>
-                          </div>
-                          <div className="h-3 bg-slate-800 rounded-full overflow-hidden flex">
-                            <div style={{ width: `${blueWinRate}%` }} className="bg-blue-500 h-full" />
-                            <div style={{ width: `${redWinRate}%` }} className="bg-red-500 h-full" />
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="flex justify-between mb-1.5 text-[11px]">
-                            <span className="text-slate-200 font-bold">藍選角率 {bluePickPct}%</span>
-                            <span className="text-slate-200 font-bold">紅選角率 {redPickPct}%</span>
-                          </div>
-                          <div className="h-3 bg-slate-800 rounded-full overflow-hidden flex">
-                            <div style={{ width: `${bluePickPct}%` }} className="bg-blue-400 h-full" />
-                            <div style={{ width: `${redPickPct}%` }} className="bg-red-400 h-full" />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* 路線分佈 */}
-                  <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4 shadow-lg">
-                    <h3 className="text-xs font-black text-slate-200 uppercase tracking-wider">角色路線分佈</h3>
-                    <div className="h-4 rounded-full overflow-hidden flex bg-slate-800">
-                      {Object.keys(POSITION_MAP).map((posKey) => {
-                        const count = positionCounts[posKey] || 0;
-                        const pct = totalGames > 0 ? (count / totalGames) * 100 : 0;
-                        if (pct === 0) return null;
-                        return (
-                          <div
-                            key={posKey}
-                            style={{ width: `${pct}%` }}
-                            className={`${POSITION_MAP[posKey].color} h-full transition-all duration-500`}
+                  return (
+                    <div
+                      key={match.matchId}
+                      className={`border rounded-xl transition-all overflow-hidden ${
+                        match.win
+                          ? 'bg-blue-950/20 border-blue-800/40'
+                          : 'bg-red-950/20 border-red-800/40'
+                      }`}
+                    >
+                      <div className="p-4 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={getChampionImg(match.championName)}
+                            alt={match.championName}
+                            className="w-12 h-12 rounded-lg border border-slate-700 object-cover"
                           />
-                        );
-                      })}
-                    </div>
-                    <div className="grid grid-cols-5 gap-2 text-center text-xs pt-1">
-                      {Object.keys(POSITION_MAP).map((posKey) => {
-                        const count = positionCounts[posKey] || 0;
-                        const pct = totalGames > 0 ? Math.round((count / totalGames) * 100) : 0;
-                        return (
-                          <div key={posKey} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                            <span className="text-slate-300 block text-[10px] font-black">{POSITION_MAP[posKey].label}</span>
-                            <span className="font-black text-white text-base">{pct}%</span>
-                            <span className="text-[10px] text-slate-400 block font-bold">{count}場</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* 每週活動 */}
-                  <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4 shadow-lg">
-                    <h3 className="text-xs font-black text-slate-200 uppercase tracking-wider">每週活動場次</h3>
-                    <div className="flex items-end justify-between h-32 pt-4 px-4 bg-slate-950 rounded-xl border border-slate-800">
-                      {DAYS.map((day, idx) => {
-                        const count = dayCounts[idx];
-                        const heightPct = Math.round((count / maxDayCount) * 100);
-                        return (
-                          <div key={day} className="flex flex-col items-center gap-2 h-full justify-end">
-                            <span className="text-[11px] text-slate-300 font-extrabold">{count}</span>
-                            <div className="w-6 bg-slate-800 rounded-t h-20 relative overflow-hidden flex items-end">
-                              <div
-                                style={{ height: `${heightPct}%` }}
-                                className="w-full bg-blue-500 transition-all rounded-t"
-                              />
+                          <div>
+                            <div className="font-bold text-sm text-slate-100 flex items-center gap-2">
+                              {match.championName}
+                              <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">
+                                {match.gameMode}
+                              </span>
                             </div>
-                            <span className="text-[11px] text-slate-300 font-black">{day}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                </div>
-              )}
-
-              {/* 切換一：概要 (Overview) */}
-              {activeTab === 'overview' && (
-                <>
-                  {totalGames > 0 && (
-                    <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-xl space-y-4">
-                      <div className="flex justify-between items-center text-xs text-slate-300 font-black border-b border-slate-800 pb-3">
-                        <span>{totalGames}場對戰 {wins}勝 {losses}敗</span>
-                        <span>最近{totalGames}場英雄表現</span>
-                        <span>首選角色與勝率</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
-                        
-                        <div className="flex items-center gap-4 border-b sm:border-b-0 sm:border-r border-slate-800 pb-4 sm:pb-0 pr-0 sm:pr-2">
-                          <div className="relative w-20 h-20 flex-shrink-0">
-                            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                              <path
-                                className="text-red-500"
-                                strokeWidth="4"
-                                stroke="currentColor"
-                                fill="none"
-                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                              />
-                              <path
-                                className="text-blue-500"
-                                strokeDasharray={`${winRate}, 100`}
-                                strokeWidth="4"
-                                strokeLinecap="round"
-                                stroke="currentColor"
-                                fill="none"
-                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                              />
-                            </svg>
-                            <div className="absolute inset-0 flex items-center justify-center font-black text-blue-400 text-sm">
-                              {winRate}%
+                            <div className="text-xs text-slate-400 mt-1">
+                              CS: {match.cs ?? match.totalMinionsKilled ?? 0} ({match.csPerMin || 0}/m)
                             </div>
                           </div>
+                        </div>
 
-                          <div className="space-y-0.5">
-                            <p className="text-xs text-slate-200 font-bold">
-                              {avgKills} / <span className="text-red-400 font-black">{avgDeaths}</span> / {avgAssists}
-                            </p>
-                            <p className="text-2xl font-black text-white">
-                              {kdaRatio} <span className="text-slate-400 text-xs font-semibold">: 1</span>
-                            </p>
-                            <p className="text-xs text-red-400 font-black">
-                              參戰率 {avgKP}%
-                            </p>
+                        <div className="text-center">
+                          <div className="text-sm font-bold">
+                            {match.kills} / <span className="text-red-400">{match.deaths}</span> / {match.assists}
+                          </div>
+                          <div className="text-xs text-slate-400 mt-0.5">
+                            傷害: {match.totalDamageDealtToChampions?.toLocaleString() || 0}
                           </div>
                         </div>
 
-                        <div className="space-y-2 border-b sm:border-b-0 sm:border-r border-slate-800 pb-4 sm:pb-0 pr-0 sm:pr-2">
-                          {topChampions.map((c) => {
-                            const cWinRate = Math.round((c.wins / c.games) * 100);
-                            const cKda = c.deaths > 0 ? ((c.kills + c.assists) / c.deaths).toFixed(2) : '4.00';
-
-                            return (
-                              <div key={c.name} className="flex items-center justify-between text-xs">
-                                <div className="flex items-center gap-2">
-                                  <img
-                                    src={`https://ddragon.leagueoflegends.com/cdn/14.1.1/img/champion/${c.name}.png`}
-                                    alt={c.name}
-                                    className="w-6 h-6 rounded-full border border-slate-700"
-                                    onError={(e: any) => { e.target.src = 'https://ddragon.leagueoflegends.com/cdn/14.1.1/img/champion/Square_0.png'; }}
-                                  />
-                                  <span className={`font-black ${cWinRate >= 60 ? 'text-red-400' : 'text-blue-400'}`}>
-                                    {cWinRate}%
-                                  </span>
-                                  <span className="text-slate-300 text-[11px] font-bold">({c.wins}勝 / {c.games - c.wins}敗)</span>
-                                </div>
-                                <span className="font-black text-white">{cKda}:1</span>
-                              </div>
-                            );
-                          })}
+                        <div className="hidden sm:flex gap-1">
+                          {match.items?.map((item: number, idx: number) => (
+                            <div key={idx} className="w-6 h-6 bg-slate-800/60 rounded border border-slate-700/50 overflow-hidden">
+                              {item > 0 && (
+                                <img src={getItemImg(item)!} alt="item" className="w-full h-full object-cover" />
+                              )}
+                            </div>
+                          ))}
                         </div>
 
-                        <div className="flex items-end justify-between px-2 h-16 pt-2">
-                          {Object.keys(POSITION_MAP).map((posKey) => {
-                            const count = positionCounts[posKey] || 0;
-                            const pct = totalGames > 0 ? Math.round((count / totalGames) * 100) : 0;
-
-                            return (
-                              <div key={posKey} className="flex flex-col items-center gap-1.5 h-full justify-end">
-                                <div className="w-4 bg-slate-800 rounded-t h-12 relative overflow-hidden flex items-end">
-                                  <div
-                                    style={{ height: `${pct}%` }}
-                                    className="w-full bg-blue-500 transition-all duration-500 rounded-t"
-                                  />
-                                </div>
-                                <span className="text-[10px] text-slate-300 font-black">
-                                  {POSITION_MAP[posKey].label.slice(0, 1)}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 戰績列表 */}
-                  <div className="space-y-3">
-                    {filteredMatches.length === 0 ? (
-                      <div className="text-center py-10 text-slate-400 bg-slate-900 rounded-2xl border border-slate-800 font-bold">
-                        近 90 天內無積分對戰紀錄
-                      </div>
-                    ) : (
-                      filteredMatches.slice(0, 20).map((m: any) => {
-                        const isExpanded = expandedMatch === m.matchId;
-                        const spell1 = SPELL_MAP[m.summoner1Id];
-                        const spell2 = SPELL_MAP[m.summoner2Id];
-                        const runePath = RUNE_MAP[m.primaryStyle];
-
-                        return (
-                          <div
-                            key={m.matchId}
-                            className={`border rounded-2xl overflow-hidden transition-all shadow-lg ${
-                              m.win
-                                ? 'bg-slate-900 border-blue-600/50 hover:border-blue-500'
-                                : 'bg-slate-900 border-red-600/50 hover:border-red-500'
-                            }`}
+                        <div className="flex items-center gap-3">
+                          <span className={`text-xs font-bold ${match.win ? 'text-blue-400' : 'text-red-400'}`}>
+                            {match.win ? '勝利' : '敗北'}
+                          </span>
+                          <button
+                            onClick={() => toggleExpand(match.matchId)}
+                            className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 transition-transform"
                           >
-                            <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-                              
-                              <div className="flex items-center gap-3.5 w-full sm:w-auto">
-                                <div className="relative flex items-center gap-1.5">
-                                  <img
-                                    src={`https://ddragon.leagueoflegends.com/cdn/14.1.1/img/champion/${m.championName}.png`}
-                                    alt={m.championName}
-                                    className="w-13 h-13 rounded-2xl border-2 border-slate-700 object-cover shadow"
-                                    onError={(e: any) => {
-                                      e.target.src = 'https://ddragon.leagueoflegends.com/cdn/14.1.1/img/champion/Square_0.png';
-                                    }}
-                                  />
+                            <span className={`inline-block transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                              ▼
+                            </span>
+                          </button>
+                        </div>
+                      </div>
 
-                                  <div className="flex flex-col gap-1">
-                                    {spell1 && (
-                                      <img
-                                        src={`https://ddragon.leagueoflegends.com/cdn/14.1.1/img/spell/${spell1}.png`}
-                                        className="w-5 h-5 rounded-md border border-slate-700"
-                                        alt="Spell 1"
-                                      />
-                                    )}
-                                    {spell2 && (
-                                      <img
-                                        src={`https://ddragon.leagueoflegends.com/cdn/14.1.1/img/spell/${spell2}.png`}
-                                        className="w-5 h-5 rounded-md border border-slate-700"
-                                        alt="Spell 2"
-                                      />
-                                    )}
-                                  </div>
-
-                                  {runePath && (
-                                    <div className="w-6 h-6 rounded-full bg-slate-950 border border-slate-700 flex items-center justify-center p-0.5">
-                                      <img
-                                        src={`https://ddragon.leagueoflegends.com/cdn/img/${runePath}`}
-                                        className="w-full h-full object-contain"
-                                        alt="Rune"
-                                      />
+                      {/* 展開詳情 */}
+                      {isExpanded && match.participants && (
+                        <div className="border-t border-slate-800/80 bg-slate-900/90 p-4 space-y-4">
+                          <div>
+                            <div className="text-xs font-bold text-blue-400 mb-2">藍隊</div>
+                            <div className="space-y-1">
+                              {match.participants
+                                .filter((p: any) => p.teamId === 100)
+                                .map((p: any, idx: number) => (
+                                  <div key={idx} className="flex items-center justify-between text-xs py-1.5 px-3 rounded bg-slate-800/40">
+                                    <div className="flex items-center gap-2">
+                                      <img src={getChampionImg(p.championName)} className="w-5 h-5 rounded-full" alt="" />
+                                      <span className="font-medium text-slate-200">{p.summonerName}</span>
                                     </div>
-                                  )}
-                                </div>
-                                
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-black text-base text-white tracking-wide">{m.championName}</span>
-                                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                                      {m.gameMode}
-                                    </span>
+                                    <div className="flex items-center gap-4 text-slate-400">
+                                      <div>{p.kills} / <span className="text-red-400">{p.deaths}</span> / {p.assists}</div>
+                                      <div className="w-12 text-right">{p.cs ?? p.totalMinionsKilled ?? 0} CS</div>
+                                    </div>
                                   </div>
-                                  <p className="text-xs text-slate-300 font-bold">{m.gameDate} ({m.gameDuration}分)</p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-5 w-full sm:w-auto justify-between sm:justify-end">
-                                <div className="text-left sm:text-right space-y-1">
-                                  <p className="text-xs font-black text-slate-100 tracking-wider">
-                                    KDA: {m.kills} / <span className="text-red-400 font-black">{m.deaths}</span> / {m.assists}
-                                  </p>
-
-                                  <div className="flex items-center sm:justify-end gap-2 text-[11px] text-slate-300 font-bold">
-                                    <span>CS: <strong className="text-white font-black">{m.totalCs}</strong> ({m.csPerMin}/m)</span>
-                                    <span>·</span>
-                                    <span>傷害: <strong className="text-amber-300 font-black">{m.totalDamage?.toLocaleString()}</strong></span>
-                                  </div>
-                                  
-                                  <div className="flex gap-1 pt-0.5">
-                                    {m.items?.map((item: number, idx: number) => (
-                                      <div key={idx} className="w-5.5 h-5.5 bg-slate-950 rounded-md border border-slate-700 overflow-hidden">
-                                        {item && item > 0 ? (
-                                          <img
-                                            src={`https://ddragon.leagueoflegends.com/cdn/14.1.1/img/item/${item}.png`}
-                                            alt={`item-${item}`}
-                                            className="w-full h-full object-cover"
-                                            onError={(e: any) => { e.target.style.display = 'none'; }}
-                                          />
-                                        ) : null}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-2.5">
-                                  <span className={`text-base font-black ${m.win ? 'text-blue-400' : 'text-red-400'}`}>
-                                    {m.win ? '勝利' : '敗北'}
-                                  </span>
-
-                                  <button
-                                    onClick={() => setExpandedMatch(isExpanded ? null : m.matchId)}
-                                    className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-700 font-bold transition-all"
-                                  >
-                                    {isExpanded ? '▲' : '▼'}
-                                  </button>
-                                </div>
-
-                              </div>
-
+                                ))}
                             </div>
-
-                            {/* 展開詳情 */}
-                            {isExpanded && m.teams && (
-                              <div className="border-t border-slate-800 bg-slate-950 p-3.5 space-y-2">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                                  {m.teams.map((p: any, idx: number) => (
-                                    <div
-                                      key={idx}
-                                      className={`flex items-center justify-between p-2.5 rounded-xl border ${
-                                        p.win ? 'bg-blue-950/40 border-blue-800' : 'bg-red-950/40 border-red-800'
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <img
-                                          src={`https://ddragon.leagueoflegends.com/cdn/14.1.1/img/champion/${p.championName}.png`}
-                                          className="w-5.5 h-5.5 rounded-full border border-slate-700"
-                                          alt={p.championName}
-                                          onError={(e: any) => { e.target.src = 'https://ddragon.leagueoflegends.com/cdn/14.1.1/img/champion/Square_0.png'; }}
-                                        />
-                                        <span className={`font-black ${p.puuid === data.player?.puuid ? 'text-blue-400' : 'text-slate-200'}`}>
-                                          {p.summonerName || '未知玩家'}
-                                        </span>
-                                      </div>
-
-                                      <div className="flex items-center gap-3 text-slate-300 text-[11px] font-bold">
-                                        <span>{p.kills}/{p.deaths}/{p.assists}</span>
-                                        <span>CS: {p.totalCs}</span>
-                                        <span className="text-amber-300 font-black">{p.totalDamage?.toLocaleString()} 傷</span>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
                           </div>
-                        );
-                      })
-                    )}
+
+                          <div>
+                            <div className="text-xs font-bold text-red-400 mb-2">紅隊</div>
+                            <div className="space-y-1">
+                              {match.participants
+                                .filter((p: any) => p.teamId === 200)
+                                .map((p: any, idx: number) => (
+                                  <div key={idx} className="flex items-center justify-between text-xs py-1.5 px-3 rounded bg-slate-800/40">
+                                    <div className="flex items-center gap-2">
+                                      <img src={getChampionImg(p.championName)} className="w-5 h-5 rounded-full" alt="" />
+                                      <span className="font-medium text-slate-200">{p.summonerName}</span>
+                                    </div>
+                                    <div className="flex items-center gap-4 text-slate-400">
+                                      <div>{p.kills} / <span className="text-red-400">{p.deaths}</span> / {p.assists}</div>
+                                      <div className="w-12 text-right">{p.cs ?? p.totalMinionsKilled ?? 0} CS</div>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* 2. 風格分頁 */}
+          {activeTab === '風格' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 績效指標 */}
+                <div className="bg-slate-800/40 border border-slate-800 rounded-xl p-5">
+                  <div className="text-xs font-bold text-slate-400 mb-4">績效指標</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-900/60 p-3 rounded-lg text-center">
+                      <div className="text-xs text-slate-400">勝率</div>
+                      <div className="text-xl font-black text-slate-100 mt-1">
+                        {data?.matches?.length
+                          ? `${Math.round((data.matches.filter((m: any) => m.win).length / data.matches.length) * 100)}%`
+                          : '0%'}
+                      </div>
+                    </div>
+                    <div className="bg-slate-900/60 p-3 rounded-lg text-center">
+                      <div className="text-xs text-slate-400">平均 KDA</div>
+                      <div className="text-xl font-black text-blue-400 mt-1">
+                        {data?.matches?.length
+                          ? (
+                              data.matches.reduce((sum: number, m: any) => sum + (m.kda || 0), 0) /
+                              data.matches.length
+                            ).toFixed(2)
+                          : '0.00'}
+                      </div>
+                    </div>
+                    <div className="bg-slate-900/60 p-3 rounded-lg text-center">
+                      <div className="text-xs text-slate-400">擊殺參與率</div>
+                      <div className="text-xl font-black text-red-400 mt-1">
+                        {data?.matches?.length
+                          ? `${Math.round(
+                              data.matches.reduce((sum: number, m: any) => sum + (m.killParticipation || 0), 0) /
+                                data.matches.length
+                            )}%`
+                          : '0%'}
+                      </div>
+                    </div>
+                    <div className="bg-slate-900/60 p-3 rounded-lg text-center">
+                      <div className="text-xs text-slate-400">平均遊戲時間</div>
+                      <div className="text-xl font-black text-emerald-400 mt-1">{styleStats.avgDuration}</div>
+                    </div>
                   </div>
-                </>
-              )}
+                </div>
 
+                {/* 藍紅方勝率與選角率 */}
+                <div className="bg-slate-800/40 border border-slate-800 rounded-xl p-5">
+                  <div className="text-xs font-bold text-slate-400 mb-4">藍紅方勝率與選角率</div>
+                  <div className="space-y-4 text-xs">
+                    <div>
+                      <div className="flex justify-between font-bold mb-1">
+                        <span className="text-blue-400">藍色勝率 {styleStats.blueWinRate}%</span>
+                        <span className="text-red-400">紅色勝率 {styleStats.redWinRate}%</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden flex">
+                        <div className="bg-blue-500 h-full" style={{ width: `${styleStats.blueWinRate}%` }}></div>
+                        <div className="bg-red-500 h-full" style={{ width: `${styleStats.redWinRate}%` }}></div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between font-bold mb-1">
+                        <span className="text-blue-400">藍選角率 {styleStats.bluePickRate}%</span>
+                        <span className="text-red-400">紅選角率 {styleStats.redPickRate}%</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden flex">
+                        <div className="bg-blue-500 h-full" style={{ width: `${styleStats.bluePickRate}%` }}></div>
+                        <div className="bg-red-500 h-full" style={{ width: `${styleStats.redPickRate}%` }}></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 每週活動場次 */}
+              <div className="bg-slate-800/40 border border-slate-800 rounded-xl p-5">
+                <div className="text-xs font-bold text-slate-400 mb-4">每週活動場次</div>
+                <div className="grid grid-cols-7 gap-2 items-end h-32">
+                  {['日', '一', '二', '三', '四', '五', '六'].map((dayName, idx) => {
+                    const count = styleStats.weeklyActivity[idx];
+                    const maxCount = Math.max(...styleStats.weeklyActivity, 1);
+                    const heightPercent = Math.round((count / maxCount) * 100);
+
+                    return (
+                      <div key={dayName} className="flex flex-col items-center gap-2 h-full justify-end">
+                        <span className="text-xs text-slate-300 font-bold">{count}</span>
+                        <div className="w-full bg-slate-700/50 rounded-t-md flex items-end h-20 overflow-hidden">
+                          <div
+                            className="w-full bg-blue-500 rounded-t-md transition-all duration-300"
+                            style={{ height: `${heightPercent}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-xs text-slate-400">{dayName}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
+          )}
 
-          </div>
-        )}
+          {/* 3. Champions 英雄專精數據分頁 */}
+          {activeTab === 'Champions' && (
+            <div className="bg-slate-800/30 border border-slate-800 rounded-xl overflow-hidden p-4 space-y-4">
+              {/* 控制列：數量與搜尋 */}
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-200">英雄專精數據</span>
+                  <span className="bg-slate-800 px-2 py-0.5 rounded text-slate-400">
+                    共 {championStats.length} 位
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="搜尋英雄..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="bg-slate-900 border border-slate-700/60 rounded px-3 py-1 text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
 
+              {/* 英雄列表 */}
+              <div className="divide-y divide-slate-800/60">
+                {championStats.map((champ: any) => (
+                  <div key={champ.name} className="py-3 flex items-center justify-between hover:bg-slate-800/30 px-2 rounded-lg transition-colors">
+                    {/* 英雄名稱與頭像 */}
+                    <div className="flex items-center gap-3 w-40">
+                      <img
+                        src={getChampionImg(champ.name)}
+                        alt={champ.name}
+                        className="w-10 h-10 rounded-lg object-cover border border-slate-700/50"
+                      />
+                      <div>
+                        <div className="font-bold text-sm text-slate-100">{champ.name}</div>
+                      </div>
+                    </div>
+
+                    {/* 已遊玩與勝率 */}
+                    <div className="text-center w-28">
+                      <div className="text-xs">
+                        <span className="text-blue-400 font-bold">{champ.wins}勝</span>{' '}
+                        <span className="text-red-400 font-bold">{champ.losses}敗</span>{' '}
+                        <span className="font-bold text-slate-200">{champ.winRate}%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-700 rounded-full mt-1.5 overflow-hidden flex">
+                        <div className="bg-blue-500 h-full" style={{ width: `${champ.winRate}%` }}></div>
+                        <div className="bg-red-500 h-full" style={{ width: `${100 - champ.winRate}%` }}></div>
+                      </div>
+                    </div>
+
+                    {/* KDA / 參戰率 */}
+                    <div className="text-center w-36">
+                      <div className="text-xs font-bold text-blue-400">
+                        {champ.kdaRatio}:1 <span className="text-slate-400 font-normal">({champ.avgKp}% 參戰)</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        {champ.avgKills} / <span className="text-red-400">{champ.avgDeaths}</span> / {champ.avgAssists}
+                      </div>
+                    </div>
+
+                    {/* DPM (傷害) */}
+                    <div className="text-center w-28">
+                      <div className="text-xs font-bold text-slate-100">{champ.avgDpm} /m</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">每分鐘傷害</div>
+                    </div>
+
+                    {/* CS (小兵) */}
+                    <div className="text-center w-28">
+                      <div className="text-xs font-bold text-slate-100">{champ.avgCs} CS</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">({champ.avgCsPerMin}/m)</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </main>
   );
