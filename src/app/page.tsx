@@ -24,11 +24,11 @@ const getItemImg = (itemId: number) => {
   return `https://ddragon.leagueoflegends.com/cdn/14.5.1/img/item/${itemId}.png`;
 };
 
-// Helper: 段位 Icon (改用穩定 Riot Ddragon 資源與備用圖)
+// Helper: 段位 Icon (改用穩定 CommunityDragon 資源，轉成全小寫檔名)
 const getRankIcon = (tier?: string) => {
   if (!tier) return PLACEHOLDER_IMG;
   const cleanTier = tier.toLowerCase();
-  return `https://ddragon.leagueoflegends.com/cdn/14.5.1/img/ranked-emblems/${cleanTier}.png`;
+  return `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/${cleanTier}.png`;
 };
 
 // Helper: 時間格式化
@@ -734,7 +734,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 修正：角色路線分佈條形圖動態比例計算 */}
+              {/* 角色路線分佈條形圖動態比例計算 */}
               <div className="bg-[#0f172a]/60 border border-slate-800/80 rounded-xl p-5">
                 <div className="text-xs font-bold text-slate-300 mb-3">角色路線分佈</div>
                 <div className="w-full h-3 bg-[#070a12] rounded-full overflow-hidden flex mb-4 border border-slate-800/60">
