@@ -9,13 +9,14 @@ import {
   Award,
   ChevronDown,
   ChevronUp,
-  Sparkles,
-  AlertCircle
+  AlertCircle,
+  ExternalLink,
+  ShieldAlert
 } from 'lucide-react';
 
-// --- Helper Functions ---
+// --- 本地與線上圖片對應邏輯 ---
 
-// 1. 英雄頭像 (優先讀取 public 本地圖檔，其餘使用 DDragon CDN)
+// 1. 英雄頭像：優先讀取 public/ 裡的 Locke 與 Mel，其餘維持 DDragon
 const getChampionImg = (name: string) => {
   if (!name) return '/unrank.jfif';
   
@@ -31,17 +32,15 @@ const getChampionImg = (name: string) => {
   return `https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/${cleanName}.png`;
 };
 
-// 2. 段位圖示 (完全讀取 public 資料夾內的本地圖片)
+// 2. 段位圖示：優先讀取 public/ 裡的自訂圖片
 const getRankIcon = (tier?: string) => {
   if (!tier) return '/unrank.jfif';
   
   const cleanTier = tier.toLowerCase();
   
-  // 處理 .jfif 格式
   if (cleanTier === 'platinum') return '/Platinum.jfif';
   if (cleanTier === 'unranked') return '/unrank.jfif';
   
-  // 其餘段位 (.png 格式)
   return `/${cleanTier}.png`;
 };
 
@@ -72,83 +71,24 @@ const getItemImg = (itemId: number) => {
   return `https://ddragon.leagueoflegends.com/cdn/14.5.1/img/item/${itemId}.png`;
 };
 
-// --- TypeScript Interfaces ---
-interface Participant {
-  puuid: string;
-  summonerName: string;
-  riotIdGameName?: string;
-  riotIdTagline?: string;
-  championName: string;
-  kills: number;
-  deaths: number;
-  assists: number;
-  win: boolean;
-  item0: number;
-  item1: number;
-  item2: number;
-  item3: number;
-  item4: number;
-  item5: number;
-  item6: number;
-  summoner1Id: number;
-  summoner2Id: number;
-  totalDamageDealtToChampions: number;
-}
-
-interface Match {
-  matchId: string;
-  gameMode: string;
-  gameDuration: number;
-  gameCreation: number;
-  participants: Participant[];
-  targetParticipant: Participant;
-}
-
-interface LeagueEntry {
-  queueType: string;
-  tier: string;
-  rank: string;
-  leaguePoints: number;
-  wins: number;
-  losses: number;
-}
-
-interface SummonerData {
-  account: {
-    puuid: string;
-    gameName: string;
-
-    tagLine: string;
-  };
-  summoner: {
-    id: string;
-    accountId: string;
-    puuid: string;
-    profileIconId: number;
-    summonerLevel: number;
-  };
-  leagues: LeagueEntry[];
-  matches: Match[];
-}
-
 export default function Home() {
   const [gameName, setGameName] = useState('');
   const [tagLine, setTagLine] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<SummonerData | null>(null);
+  const [data, setData] = useState<any>(null);
   const [expandedMatches, setExpandedMatches] = useState<Record<string, boolean>>({});
 
-  // 預設載入範例資料 (可自行調整)
+  // 預設載入 Fungz #TW2
   useEffect(() => {
-    setGameName('Hide on bush');
-    setTagLine('KR1');
+    setGameName('Fungz');
+    setTagLine('TW2');
   }, []);
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!gameName || !tagLine) {
-      setError('請輸入完整的遊戲名字與 Tag (例如: Hide on bush #KR1)');
+      setError('請輸入完整的遊戲名字與 Tag');
       return;
     }
 
@@ -156,11 +96,13 @@ export default function Home() {
     setError(null);
 
     try {
-      const res = await fetch(`/api/summoner?gameName=${encodeURIComponent(gameName)}&tagLine=${encodeURIComponent(tagLine)}`);
+      const res = await fetch(
+        `/api/matches?gameName=${encodeURIComponent(gameName)}&tagLine=${encodeURIComponent(tagLine)}`
+      );
       const result = await res.json();
 
       if (!res.ok) {
-        throw new Error(result.error || '搜尋失敗，請檢查名稱是否正確');
+        throw new Error(result.error || '搜尋失敗，請檢查名稱與 Tag 是否正確');
       }
 
       setData(result);
@@ -175,271 +117,271 @@ export default function Home() {
     setExpandedMatches((prev) => ({ ...prev, [matchId]: !prev[matchId] }));
   };
 
-  const soloQueue = data?.leagues?.find((l) => l.queueType === 'RANKED_SOLO_5x5');
-  const flexQueue = data?.leagues?.find((l) => l.queueType === 'RANKED_FLEX_SR');
+  // 計算平均勝率與 KDA
+  const calculateStats = () => {
+    if (!data?.matches || data.matches.length === 0) return null;
+
+    let wins = 0;
+    let totalKills = 0;
+    let totalDeaths = 0;
+    let totalAssists = 0;
+
+    data.matches.forEach((m: any) => {
+      const p = m.targetParticipant;
+      if (p) {
+        if (p.win) wins++;
+        totalKills += p.kills || 0;
+        totalDeaths += p.deaths || 0;
+        totalAssists += p.assists || 0;
+      }
+    });
+
+    const total = data.matches.length;
+    const winRate = Math.round((wins / total) * 100);
+    const kda = totalDeaths === 0 ? 'Perfect' : ((totalKills + totalAssists) / totalDeaths).toFixed(2);
+
+    return {
+      wins,
+      losses: total - wins,
+      winRate,
+      avgKills: (totalKills / total).toFixed(1),
+      avgDeaths: (totalDeaths / total).toFixed(1),
+      avgAssists: (totalAssists / total).toFixed(1),
+      kda,
+    };
+  };
+
+  const stats = calculateStats();
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8">
+    <main className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* 搜尋欄位 */}
-        <div className="bg-slate-900/80 backdrop-blur border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl">
-          <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-3">
-            <div className="flex-1 flex gap-2">
+        {/* 頂部標題與搜尋列 */}
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/80 border border-slate-800 backdrop-blur p-6 rounded-2xl shadow-2xl">
+          <div>
+            <h1 className="text-2xl font-black tracking-wider bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+              LOL MATCH DASHBOARD
+            </h1>
+            <p className="text-xs text-slate-400 mt-1">英雄聯盟戰績搜尋與即時對戰分析</p>
+          </div>
+
+          <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2">
+            <div className="flex bg-slate-950 border border-slate-800 rounded-xl overflow-hidden focus-within:border-cyan-500 transition">
               <input
                 type="text"
-                placeholder="遊戲名字 (例: Hide on bush)"
+                placeholder="遊戲名字 (如: Fungz)"
                 value={gameName}
                 onChange={(e) => setGameName(e.target.value)}
-                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:border-cyan-500 transition"
+                className="bg-transparent px-4 py-2.5 text-sm outline-none w-40 sm:w-48 placeholder:text-slate-600"
               />
-              <div className="flex items-center text-slate-500 font-bold">#</div>
+              <span className="flex items-center text-slate-600 font-bold">#</span>
               <input
                 type="text"
-                placeholder="Tag (例: KR1)"
+                placeholder="Tag (如: TW2)"
                 value={tagLine}
                 onChange={(e) => setTagLine(e.target.value)}
-                className="w-28 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:border-cyan-500 transition"
+                className="bg-transparent px-3 py-2.5 text-sm outline-none w-20 placeholder:text-slate-600"
               />
             </div>
             <button
               type="submit"
               disabled={loading}
-              className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold px-6 py-3 rounded-xl flex items-center justify-center gap-2 transition disabled:opacity-50"
+              className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 transition disabled:opacity-50 text-sm shadow-lg shadow-cyan-500/20"
             >
-              {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               搜尋戰績
             </button>
           </form>
+        </header>
 
-          {error && (
-            <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl flex items-center gap-2 text-sm">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              {error}
-            </div>
-          )}
-        </div>
+        {/* 錯誤訊息展示 */}
+        {error && (
+          <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center gap-3 text-sm animate-fade-in">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
 
+        {/* 主要內容區域 */}
         {data && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            {/* 左側：玩家資訊 & 段位 */}
+            {/* 左側：玩家資訊與統計 */}
             <div className="space-y-6">
               
-              {/* 個人資料 */}
-              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 relative overflow-hidden">
+              {/* 玩家個人卡片 */}
+              <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+                
                 <div className="flex items-center gap-4">
                   <div className="relative">
                     <img
-                      src={`https://ddragon.leagueoflegends.com/cdn/14.5.1/img/profileicon/${data.summoner.profileIconId}.png`}
-                      alt="Icon"
-                      className="w-20 h-20 rounded-2xl border-2 border-cyan-500/50"
+                      src={`https://ddragon.leagueoflegends.com/cdn/14.5.1/img/profileicon/${data.summoner?.profileIconId || 6}.png`}
+                      alt="Profile Icon"
+                      className="w-16 h-16 rounded-2xl border-2 border-slate-700 object-cover"
                     />
-                    <span className="absolute -bottom-2 -right-2 bg-slate-950 text-cyan-400 text-xs px-2 py-0.5 rounded-full border border-slate-800 font-mono">
-                      Lv.{data.summoner.summonerLevel}
+                    <span className="absolute -bottom-2 -right-2 bg-slate-800 border border-slate-700 text-xs px-2 py-0.5 rounded-full text-slate-300 font-mono">
+                      {data.summoner?.summonerLevel || 300}
                     </span>
                   </div>
+
                   <div>
-                    <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                      {data.account.gameName}
-                      <span className="text-slate-500 text-lg font-normal">#{data.account.tagLine}</span>
-                    </h1>
+                    <h2 className="text-xl font-bold flex items-center gap-2">
+                      {data.player?.gameName || gameName}
+                      <span className="text-sm font-normal text-slate-500">#{data.player?.tagLine || tagLine}</span>
+                    </h2>
+                    <p className="text-xs text-cyan-400 mt-1 flex items-center gap-1">
+                      <Activity className="w-3 h-3" /> 近期戰績更新完畢
+                    </p>
+                  </div>
+                </div>
+
+                {/* 單雙排段位資訊 */}
+                <div className="mt-6 pt-6 border-t border-slate-800 flex items-center gap-4">
+                  <img
+                    src={getRankIcon(data.ranks?.solo?.tier)}
+                    alt="Rank Icon"
+                    className="w-16 h-16 object-contain"
+                  />
+                  <div>
+                    <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">單雙排段位</div>
+                    <div className="text-lg font-bold text-slate-200">
+                      {data.ranks?.solo?.tier ? `${data.ranks.solo.tier} ${data.ranks.solo.rank}` : 'Unranked'}
+                    </div>
+                    {data.ranks?.solo?.leaguePoints !== undefined && (
+                      <div className="text-xs text-slate-400 font-mono">
+                        {data.ranks.solo.leaguePoints} LP / {data.ranks.solo.wins}勝 {data.ranks.solo.losses}敗
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* 單/雙排段位 */}
-              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5">
-                <div className="text-xs font-semibold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-1.5">
-                  <Trophy className="w-4 h-4 text-amber-400" />
-                  單/雙人積分
-                </div>
-                {soloQueue ? (
-                  <div className="flex items-center gap-4">
-                    <img
-                      src={getRankIcon(soloQueue.tier)}
-                      alt={soloQueue.tier}
-                      className="w-16 h-16 object-contain"
-                    />
-                    <div>
-                      <div className="font-bold text-lg text-slate-100">
-                        {soloQueue.tier} {soloQueue.rank}
-                      </div>
-                      <div className="text-sm text-cyan-400 font-mono">{soloQueue.leaguePoints} LP</div>
-                      <div className="text-xs text-slate-400 mt-1">
-                        {soloQueue.wins}勝 {soloQueue.losses}敗 (勝率 {Math.round((soloQueue.wins / (soloQueue.wins + soloQueue.losses)) * 100)}%)
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-4">
-                    <img src={getRankIcon('unranked')} alt="Unranked" className="w-16 h-16 object-contain opacity-60" />
-                    <div className="text-slate-500 text-sm">未排名</div>
-                  </div>
-                )}
-              </div>
+              {/* 近期戰績數據統計 */}
+              {stats && (
+                <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                    <Trophy className="w-4 h-4 text-amber-400" /> 近期 {data.matches?.length || 0} 場表現
+                  </h3>
 
-              {/* 彈性積分 */}
-              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5">
-                <div className="text-xs font-semibold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-1.5">
-                  <Award className="w-4 h-4 text-indigo-400" />
-                  彈性積分
-                </div>
-                {flexQueue ? (
-                  <div className="flex items-center gap-4">
-                    <img
-                      src={getRankIcon(flexQueue.tier)}
-                      alt={flexQueue.tier}
-                      className="w-16 h-16 object-contain"
-                    />
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-4">
                     <div>
-                      <div className="font-bold text-lg text-slate-100">
-                        {flexQueue.tier} {flexQueue.rank}
-                      </div>
-                      <div className="text-sm text-cyan-400 font-mono">{flexQueue.leaguePoints} LP</div>
-                      <div className="text-xs text-slate-400 mt-1">
-                        {flexQueue.wins}勝 {flexQueue.losses}敗 (勝率 {Math.round((flexQueue.wins / (flexQueue.wins + flexQueue.losses)) * 100)}%)
+                      <div className="text-2xl font-black text-slate-100">{stats.winRate}%</div>
+                      <div className="text-xs text-slate-500">{stats.wins}勝 {stats.losses}敗</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xl font-bold text-cyan-400">{stats.kda} KDA</div>
+                      <div className="text-xs text-slate-500 font-mono">
+                        {stats.avgKills} / {stats.avgDeaths} / {stats.avgAssists}
                       </div>
                     </div>
                   </div>
-                ) : (
-                  <div className="flex items-center gap-4">
-                    <img src={getRankIcon('unranked')} alt="Unranked" className="w-16 h-16 object-contain opacity-60" />
-                    <div className="text-slate-500 text-sm">未排名</div>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
 
             </div>
 
-            {/* 右側：近期對戰紀錄 */}
-            <div className="lg:col-span-2 space-y-4">
-              <h2 className="text-lg font-bold text-slate-200 flex items-center gap-2">
-                <Activity className="w-5 h-5 text-cyan-400" />
-                近期對戰
-              </h2>
+            {/* 右側：對戰列表 */}
+            <div className="lg:col-span-2 space-y-3">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                <Award className="w-4 h-4 text-cyan-400" /> 近期對戰紀錄
+              </h3>
 
               {data.matches && data.matches.length > 0 ? (
-                data.matches.map((match) => {
-                  const p = match.targetParticipant;
-                  if (!p) return null;
-
+                data.matches.map((m: any, idx: number) => {
+                  const p = m.targetParticipant || {};
                   const isWin = p.win;
-                  const kda = p.deaths === 0 ? 'Perfect' : ((p.kills + p.assists) / p.deaths).toFixed(2);
-                  const durationMin = Math.floor(match.gameDuration / 60);
-                  const durationSec = match.gameDuration % 60;
-                  const isExpanded = expandedMatches[match.matchId];
+                  const isExpanded = expandedMatches[m.matchId || idx];
 
                   return (
                     <div
-                      key={match.matchId}
-                      className={`border rounded-2xl overflow-hidden transition ${
+                      key={m.matchId || idx}
+                      className={`border rounded-2xl transition overflow-hidden ${
                         isWin
-                          ? 'bg-blue-950/20 border-blue-500/30 hover:border-blue-500/50'
-                          : 'bg-red-950/20 border-red-500/30 hover:border-red-500/50'
+                          ? 'bg-blue-950/20 border-blue-800/40 hover:border-blue-700/60'
+                          : 'bg-red-950/20 border-red-800/40 hover:border-red-700/60'
                       }`}
                     >
-                      {/* 對戰概要 */}
-                      <div className="p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+                      {/* 對戰摘要條 */}
+                      <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         
-                        {/* 英雄頭像與模式 */}
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-4">
+                          {/* 英雄頭像 */}
                           <div className="relative">
                             <img
                               src={getChampionImg(p.championName)}
                               alt={p.championName}
                               className="w-14 h-14 rounded-xl object-cover border border-slate-700"
                             />
-                          </div>
-                          <div>
-                            <div className={`font-bold ${isWin ? 'text-blue-400' : 'text-red-400'}`}>
-                              {isWin ? '勝利' : '敗北'}
-                            </div>
-                            <div className="text-xs text-slate-400">{match.gameMode}</div>
-                            <div className="text-xs text-slate-500 font-mono">
-                              {durationMin}分 {durationSec}秒
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* KDA & 召喚師技能 */}
-                        <div className="flex items-center gap-4">
-                          <div className="text-center">
-                            <div className="font-bold text-slate-100">
-                              {p.kills} / <span className="text-red-400">{p.deaths}</span> / {p.assists}
-                            </div>
-                            <div className="text-xs text-slate-400 font-mono">
-                              KDA: <span className="text-cyan-400 font-bold">{kda}</span>
-                            </div>
+                            <span className="absolute -bottom-1 -right-1 bg-slate-900 border border-slate-700 text-[10px] px-1 rounded text-slate-300">
+                              {p.champLevel || 18}
+                            </span>
                           </div>
 
-                          <div className="flex gap-1">
-                            {p.summoner1Id > 0 && (
+                          {/* 技能與天賦圖示 */}
+                          <div className="flex flex-col gap-1">
+                            {getSummonerSpellImg(p.summoner1Id) && (
                               <img
                                 src={getSummonerSpellImg(p.summoner1Id)}
-                                alt="Spell1"
+                                alt="Spell 1"
                                 className="w-6 h-6 rounded border border-slate-800"
                               />
                             )}
-                            {p.summoner2Id > 0 && (
+                            {getSummonerSpellImg(p.summoner2Id) && (
                               <img
                                 src={getSummonerSpellImg(p.summoner2Id)}
-                                alt="Spell2"
+                                alt="Spell 2"
                                 className="w-6 h-6 rounded border border-slate-800"
                               />
                             )}
                           </div>
-                        </div>
 
-                        {/* 裝備列表 */}
-                        <div className="grid grid-cols-4 gap-1">
-                          {[p.item0, p.item1, p.item2, p.item3, p.item4, p.item5, p.item6].map((item, idx) => (
-                            <div key={idx} className="w-7 h-7 bg-slate-900 border border-slate-800 rounded overflow-hidden">
-                              {getItemImg(item) && (
-                                <img src={getItemImg(item)!} alt="item" className="w-full h-full object-cover" />
-                              )}
+                          {/* KDA 與資訊 */}
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-sm font-bold ${isWin ? 'text-blue-400' : 'text-red-400'}`}>
+                                {isWin ? '勝利' : '敗北'}
+                              </span>
+                              <span className="text-xs text-slate-500 font-mono">{m.gameMode || 'Ranked'}</span>
                             </div>
-                          ))}
+                            <div className="text-lg font-black tracking-wide font-mono mt-0.5">
+                              {p.kills || 0} / <span className="text-red-400">{p.deaths || 0}</span> / {p.assists || 0}
+                            </div>
+                          </div>
                         </div>
 
-                        {/* 展開按鈕 */}
-                        <button
-                          onClick={() => toggleMatch(match.matchId)}
-                          className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/50 transition"
-                        >
-                          {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                        </button>
-                      </div>
-
-                      {/* 展開細節：同場所有玩家 */}
-                      {isExpanded && (
-                        <div className="border-t border-slate-800/60 p-4 bg-slate-950/40">
-                          <div className="text-xs font-semibold text-slate-400 mb-2">同場玩家數據</div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            {match.participants.map((part, idx) => (
-                              <div
-                                key={idx}
-                                className={`flex items-center justify-between p-2 rounded-lg border text-xs ${
-                                  part.puuid === data.account.puuid
-                                    ? 'bg-cyan-950/30 border-cyan-500/40'
-                                    : 'bg-slate-900/50 border-slate-800/50'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <img
-                                    src={getChampionImg(part.championName)}
-                                    alt={part.championName}
-                                    className="w-6 h-6 rounded object-cover"
-                                  />
-                                  <span className="truncate max-w-[100px] text-slate-200">
-                                    {part.riotIdGameName || part.summonerName}
-                                  </span>
-                                </div>
-                                <div className="font-mono text-slate-400">
-                                  {part.kills}/{part.deaths}/{part.assists}
-                                </div>
+                        {/* 裝備列表與展開按鈕 */}
+                        <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 border-slate-800/60 pt-3 sm:pt-0">
+                          {/* 6 個裝備欄 */}
+                          <div className="grid grid-cols-4 sm:grid-cols-7 gap-1">
+                            {[p.item0, p.item1, p.item2, p.item3, p.item4, p.item5, p.item6].map((item, i) => (
+                              <div key={i} className="w-7 h-7 bg-slate-900/80 border border-slate-800 rounded flex items-center justify-center overflow-hidden">
+                                {getItemImg(item) ? (
+                                  <img src={getItemImg(item)!} alt="Item" className="w-full h-full object-cover" />
+                                ) : null}
                               </div>
                             ))}
+                          </div>
+
+                          <button
+                            onClick={() => toggleMatch(m.matchId || idx)}
+                            className="p-2 hover:bg-slate-800/50 rounded-lg transition text-slate-400 hover:text-slate-200"
+                          >
+                            {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                          </button>
+                        </div>
+
+                      </div>
+
+                      {/* 點擊展開的詳細內容 */}
+                      {isExpanded && (
+                        <div className="p-4 bg-slate-950/60 border-t border-slate-800/60 space-y-2 text-xs">
+                          <div className="font-bold text-slate-400 mb-2">對戰數據細節</div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-slate-300">
+                            <div>傷害輸出：<span className="font-mono text-cyan-400">{p.totalDamageDealtToChampions || 0}</span></div>
+                            <div>擊殺視野：<span className="font-mono text-cyan-400">{p.visionScore || 0}</span></div>
+                            <div>尾兵計數：<span className="font-mono text-cyan-400">{(p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0)}</span></div>
                           </div>
                         </div>
                       )}
@@ -448,8 +390,8 @@ export default function Home() {
                   );
                 })
               ) : (
-                <div className="text-center py-12 text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800">
-                  尚無近期對戰紀錄
+                <div className="p-12 text-center bg-slate-900/50 border border-slate-800 rounded-2xl text-slate-500">
+                  暫無對戰紀錄資料
                 </div>
               )}
             </div>
