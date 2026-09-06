@@ -2,19 +2,17 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  Search,
   ChevronDown,
   ChevronUp,
   AlertCircle
 } from 'lucide-react';
 
-// --- 本地與線上圖片對應邏輯 ---
+// --- 根據你的資料夾圖片對應邏輯 ---
 
-// 1. 英雄頭像：優先讀取 public/ 裡的 Locke 與 Mel，其餘維持 DDragon
 const getChampionImg = (name: string) => {
   if (!name) return '/unrank.jfif';
-  
   const lowerName = name.toLowerCase();
+
   if (lowerName === 'locke') return '/locke.jpg';
   if (lowerName === 'mel') return '/Mel.jfif';
 
@@ -26,63 +24,44 @@ const getChampionImg = (name: string) => {
   return `https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/${cleanName}.png`;
 };
 
-// 2. 段位圖示：讀取 public/ 裡的自訂圖片
 const getRankIcon = (tier?: string) => {
   if (!tier) return '/unrank.jfif';
-  
   const cleanTier = tier.toLowerCase();
+  
+  if (cleanTier === 'challenger') return '/challenger.png';
   if (cleanTier === 'platinum') return '/Platinum.jfif';
   if (cleanTier === 'unranked') return '/unrank.jfif';
   
   return `/${cleanTier}.png`;
 };
 
-// 3. 召喚師技能圖示
-const getSummonerSpellImg = (spellId: number) => {
-  const spellMap: Record<number, string> = {
-    1: 'SummonerBoost',
-    3: 'SummonerExhaust',
-    4: 'SummonerFlash',
-    6: 'SummonerHaste',
-    7: 'SummonerHeal',
-    11: 'SummonerSmite',
-    12: 'SummonerTeleport',
-    13: 'SummonerMana',
-    14: 'SummonerDot',
-    21: 'SummonerBarrier',
-    32: 'SummonerSnowball',
-  };
-  const spellName = spellMap[spellId];
-  return spellName
-    ? `https://ddragon.leagueoflegends.com/cdn/14.5.1/img/spell/${spellName}.png`
-    : '';
-};
-
-// 4. 裝備圖示
-const getItemImg = (itemId: number) => {
-  if (!itemId || itemId === 0) return null;
-  return `https://ddragon.leagueoflegends.com/cdn/14.5.1/img/item/${itemId}.png`;
-};
-
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'overview' | 'style' | 'champions'>('overview');
   const [region, setRegion] = useState('韓服 (KR)');
-  const [searchInput, setSearchInput] = useState('Hide on bush #KR1');
+  const [searchInput, setSearchInput] = useState('Hide on bush#KR1');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any>(null);
-  const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
+  const [expandedMatchId, setExpandedMatchId] = useState<string | null>('1');
 
-  // 初始載入預設資料
+  // 核心搜尋邏輯
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    
-    const parts = searchInput.split('#');
-    const gameName = parts[0]?.trim();
-    const tagLine = parts[1]?.trim() || 'TW2';
+
+    let gameName = '';
+    let tagLine = '';
+
+    if (searchInput.includes('#')) {
+      const parts = searchInput.split('#');
+      gameName = parts[0].trim();
+      tagLine = parts[1].trim();
+    } else {
+      gameName = searchInput.trim();
+      tagLine = region.includes('TW2') ? 'TW2' : 'KR1';
+    }
 
     if (!gameName) {
-      setError('請輸入遊戲名稱');
+      setError('請輸入有效的 Riot ID (例: Name#TAG)');
       return;
     }
 
@@ -116,10 +95,10 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-[#070a12] text-slate-200 p-4 md:p-8 font-sans">
+    <main className="min-h-screen bg-[#050811] text-slate-200 p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* 頂部 Header & 分頁導覽 */}
+        {/* 頂部導覽列 */}
         <header className="flex items-center justify-between border-b border-slate-800/80 pb-4">
           <div className="flex items-center gap-8 text-sm font-bold">
             <button
@@ -146,13 +125,13 @@ export default function Home() {
           </div>
         </header>
 
-        {/* 搜尋欄位 */}
-        <div className="flex justify-center my-6">
-          <form onSubmit={handleSearch} className="flex gap-2 w-full max-w-xl">
+        {/* 搜尋欄 */}
+        <div className="flex justify-center my-4">
+          <form onSubmit={handleSearch} className="flex gap-2 w-full max-w-md">
             <select
               value={region}
               onChange={(e) => setRegion(e.target.value)}
-              className="bg-[#0f1422] border border-slate-800 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500"
+              className="bg-[#0b0f19] border border-slate-800 text-xs rounded-xl px-3 py-2 outline-none focus:border-blue-500"
             >
               <option>韓服 (KR)</option>
               <option>台服 (TW2)</option>
@@ -162,14 +141,14 @@ export default function Home() {
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="名稱 #TAG"
-              className="flex-1 bg-[#0f1422] border border-slate-800 text-sm rounded-xl px-4 py-2.5 outline-none focus:border-blue-500"
+              placeholder="Hide on bush#KR1"
+              className="flex-1 bg-[#0b0f19] border border-slate-800 text-xs rounded-xl px-4 py-2 outline-none focus:border-blue-500 font-mono"
             />
 
             <button
               type="submit"
               disabled={loading}
-              className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-6 py-2.5 rounded-xl transition disabled:opacity-50"
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-5 py-2 rounded-xl transition disabled:opacity-50"
             >
               {loading ? '搜尋中...' : '搜尋'}
             </button>
@@ -183,15 +162,14 @@ export default function Home() {
           </div>
         )}
 
-        {/* 核心區域：左側段位卡片 + 右側主數據區 */}
+        {/* 主區域 */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           
-          {/* 左側：單雙排 & 彈性積分卡片 */}
+          {/* 左側段位 */}
           <div className="space-y-4 lg:col-span-1">
-            {/* 單雙排 */}
-            <div className="bg-[#0d111d] border border-slate-800/80 rounded-2xl p-4 flex items-center gap-4">
+            <div className="bg-[#0b0f19] border border-slate-800/80 rounded-xl p-4 flex items-center gap-4">
               <img
-                src={getRankIcon(data?.ranks?.solo?.tier || 'CHALLENGER')}
+                src={getRankIcon(data?.ranks?.solo?.tier || 'challenger')}
                 alt="Rank"
                 className="w-14 h-14 object-contain"
               />
@@ -206,8 +184,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 彈性積分 */}
-            <div className="bg-[#0d111d] border border-slate-800/80 rounded-2xl p-4 flex items-center gap-4">
+            <div className="bg-[#0b0f19] border border-slate-800/80 rounded-xl p-4 flex items-center gap-4">
               <img
                 src={getRankIcon('unranked')}
                 alt="Unranked"
@@ -220,16 +197,14 @@ export default function Home() {
             </div>
           </div>
 
-          {/* 右側內容：依據 Active Tab 切換頁面內容 */}
+          {/* 右側頁面內容 */}
           <div className="lg:col-span-3 space-y-4">
             
-            {/* 分頁 1：概要 (Overview) */}
+            {/* 1. 概要頁面 */}
             {activeTab === 'overview' && (
               <>
-                {/* 20場統計圖表卡片 */}
-                <div className="bg-[#0d111d] border border-slate-800/80 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="bg-[#0b0f19] border border-slate-800/80 rounded-xl p-5 flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    {/* 勝率圓環 */}
                     <div className="relative w-16 h-16 flex items-center justify-center rounded-full border-4 border-blue-500 bg-slate-900/50">
                       <span className="text-xs font-black text-white">65%</span>
                     </div>
@@ -240,7 +215,6 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* 最近英雄表現 */}
                   <div className="space-y-1.5 text-xs">
                     <div className="flex items-center gap-3">
                       <img src={getChampionImg('Tristana')} className="w-5 h-5 rounded-full" />
@@ -253,14 +227,13 @@ export default function Home() {
                       <span className="text-slate-300 font-mono ml-2">5.00:1</span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <img src={getChampionImg('Locke')} className="w-5 h-5 rounded-full" />
+                      <img src={getChampionImg('Locke')} className="w-5 h-5 rounded-full object-cover" />
                       <span className="text-blue-400 font-bold">50% <span className="text-slate-400 font-normal">(1勝 / 1敗)</span></span>
                       <span className="text-slate-300 font-mono ml-2">2.86:1</span>
                     </div>
                   </div>
                 </div>
 
-                {/* 對戰清單 */}
                 <div className="space-y-2.5">
                   {(data?.matches || [
                     { id: '1', champion: 'Tristana', kills: 7, deaths: 3, assists: 5, win: true, cs: '11/m', damage: '27,698' },
@@ -285,13 +258,12 @@ export default function Home() {
                           isWin ? 'bg-[#0a1428]/90 border-blue-900/40' : 'bg-[#1c0d13]/90 border-red-900/40'
                         }`}
                       >
-                        {/* 對戰列 */}
                         <div className="p-3.5 flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <img
                               src={getChampionImg(champName)}
                               alt={champName}
-                              className="w-11 h-11 rounded-lg object-cover border border-slate-700"
+                              className="w-11 h-11 rounded-lg object-cover border border-slate-700 bg-slate-800"
                             />
                             <div>
                               <div className="flex items-center gap-2">
@@ -326,53 +298,53 @@ export default function Home() {
                           </div>
                         </div>
 
-                        {/* 展開 10 人數據列表 (圖片 4 樣式) */}
+                        {/* 展開之隊伍數據（對齊你的第2張圖） */}
                         {isExpanded && (
-                          <div className="p-4 bg-[#080b13] border-t border-slate-800/80 space-y-4 text-xs">
-                            {/* 藍隊 */}
+                          <div className="border-t border-slate-800/80 bg-[#080c16] p-4 text-xs space-y-3">
                             <div>
                               <div className="text-blue-400 font-bold mb-2">藍隊 (Team 100)</div>
-                              <div className="space-y-1">
-                                {[
-                                  { name: 'aierlanxiaozhu', champ: 'Galio', kda: '16 / 4 / 7', cs: '236 CS', damage: '38,871' },
-                                  { name: 'dylzg', champ: 'LeeSin', kda: '9 / 3 / 8', cs: '218 CS', damage: '17,789' },
-                                  { name: 'Hide on bush', champ: 'Tristana', kda: '7 / 3 / 5', cs: '260 CS', damage: '27,698' },
-                                ].map((p, pIdx) => (
-                                  <div key={pIdx} className="flex items-center justify-between py-1 border-b border-slate-800/40 text-slate-300">
-                                    <div className="flex items-center gap-2">
-                                      <img src={getChampionImg(p.champ)} className="w-6 h-6 rounded" />
-                                      <span className="font-bold">{p.name}</span>
-                                    </div>
-                                    <div className="flex items-center gap-4 font-mono text-[11px]">
-                                      <span>{p.kda}</span>
-                                      <span className="text-slate-500">{p.cs}</span>
-                                      <span className="text-amber-400 font-bold">💥 {p.damage}</span>
-                                    </div>
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between text-slate-300">
+                                  <div className="flex items-center gap-2">
+                                    <img src={getChampionImg('LeeSin')} className="w-5 h-5 rounded" />
+                                    <span>aierlanxiaozhu</span>
                                   </div>
-                                ))}
+                                  <div className="font-mono text-slate-400">16 / 4 / 7 <span className="ml-3">236 CS</span> <span className="text-amber-400 font-bold ml-3">💥 38,871</span></div>
+                                </div>
+                                <div className="flex items-center justify-between text-slate-300">
+                                  <div className="flex items-center gap-2">
+                                    <img src={getChampionImg('Tristana')} className="w-5 h-5 rounded" />
+                                    <span>dylzg</span>
+                                  </div>
+                                  <div className="font-mono text-slate-400">9 / 3 / 8 <span className="ml-3">218 CS</span> <span className="text-amber-400 font-bold ml-3">💥 17,789</span></div>
+                                </div>
+                                <div className="flex items-center justify-between text-white font-bold bg-blue-900/20 p-1 rounded">
+                                  <div className="flex items-center gap-2">
+                                    <img src={getChampionImg('Tristana')} className="w-5 h-5 rounded" />
+                                    <span>Hide on bush</span>
+                                  </div>
+                                  <div className="font-mono">7 / 3 / 5 <span className="ml-3">260 CS</span> <span className="text-amber-400 font-bold ml-3">💥 27,698</span></div>
+                                </div>
                               </div>
                             </div>
 
-                            {/* 紅隊 */}
-                            <div>
+                            <div className="pt-2 border-t border-slate-800/40">
                               <div className="text-red-400 font-bold mb-2">紅隊 (Team 200)</div>
-                              <div className="space-y-1">
-                                {[
-                                  { name: 'Frog', champ: 'Akali', kda: '4 / 12 / 1', cs: '137 CS', damage: '16,231' },
-                                  { name: 'KRX Winner', champ: 'Sylas', kda: '6 / 8 / 7', cs: '126 CS', damage: '12,616' },
-                                ].map((p, pIdx) => (
-                                  <div key={pIdx} className="flex items-center justify-between py-1 border-b border-slate-800/40 text-slate-300">
-                                    <div className="flex items-center gap-2">
-                                      <img src={getChampionImg(p.champ)} className="w-6 h-6 rounded" />
-                                      <span className="font-bold">{p.name}</span>
-                                    </div>
-                                    <div className="flex items-center gap-4 font-mono text-[11px]">
-                                      <span>{p.kda}</span>
-                                      <span className="text-slate-500">{p.cs}</span>
-                                      <span className="text-amber-400 font-bold">💥 {p.damage}</span>
-                                    </div>
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between text-slate-300">
+                                  <div className="flex items-center gap-2">
+                                    <img src={getChampionImg('Cassiopeia')} className="w-5 h-5 rounded" />
+                                    <span>Frog</span>
                                   </div>
-                                ))}
+                                  <div className="font-mono text-slate-400">4 / 12 / 1 <span className="ml-3">137 CS</span> <span className="text-amber-400 font-bold ml-3">💥 16,231</span></div>
+                                </div>
+                                <div className="flex items-center justify-between text-slate-300">
+                                  <div className="flex items-center gap-2">
+                                    <img src={getChampionImg('Syndra')} className="w-5 h-5 rounded" />
+                                    <span>KRX Winner</span>
+                                  </div>
+                                  <div className="font-mono text-slate-400">6 / 8 / 7 <span className="ml-3">126 CS</span> <span className="text-amber-400 font-bold ml-3">💥 12,616</span></div>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -384,68 +356,71 @@ export default function Home() {
               </>
             )}
 
-            {/* 分頁 2：風格 (Style Analysis) */}
+            {/* 2. 風格頁面（對齊你的第3張圖） */}
             {activeTab === 'style' && (
               <div className="space-y-4">
-                <div className="grid grid-cols-4 gap-3">
-                  <div className="bg-[#0d111d] border border-slate-800 p-4 rounded-xl text-center">
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="bg-[#0b0f19] border border-slate-800/80 p-4 rounded-xl text-center">
                     <div className="text-xs text-slate-400">場次</div>
                     <div className="text-xl font-black text-white mt-1">18</div>
                     <div className="text-[10px] text-slate-500">11勝 7敗</div>
                   </div>
-                  <div className="bg-[#0d111d] border border-slate-800 p-4 rounded-xl text-center">
+                  <div className="bg-[#0b0f19] border border-slate-800/80 p-4 rounded-xl text-center">
                     <div className="text-xs text-slate-400">勝率</div>
                     <div className="text-xl font-black text-blue-400 mt-1">61%</div>
                   </div>
-                  <div className="bg-[#0d111d] border border-slate-800 p-4 rounded-xl text-center">
+                  <div className="bg-[#0b0f19] border border-slate-800/80 p-4 rounded-xl text-center">
                     <div className="text-xs text-slate-400">KDA</div>
                     <div className="text-xl font-black text-purple-400 mt-1">3.48</div>
                   </div>
-                  <div className="bg-[#0d111d] border border-slate-800 p-4 rounded-xl text-center">
+                  <div className="bg-[#0b0f19] border border-slate-800/80 p-4 rounded-xl text-center">
                     <div className="text-xs text-slate-400">英雄池</div>
                     <div className="text-xl font-black text-amber-400 mt-1">13</div>
                   </div>
                 </div>
 
-                <div className="bg-[#0d111d] border border-slate-800 p-5 rounded-2xl">
-                  <div className="text-sm font-bold text-white mb-4">角色路線分佈</div>
-                  <div className="w-full bg-blue-600 h-3 rounded-full mb-4" />
+                <div className="bg-[#0b0f19] border border-slate-800/80 p-5 rounded-xl space-y-4">
+                  <div className="text-sm font-bold text-white">角色路線分佈</div>
+                  <div className="w-full bg-blue-600 h-2.5 rounded-full overflow-hidden">
+                    <div className="bg-blue-500 h-full w-full" />
+                  </div>
                   <div className="grid grid-cols-5 gap-2 text-center text-xs">
-                    <div className="bg-slate-900/60 p-2 rounded-lg"><div className="text-slate-400">上路</div><div className="font-bold text-white mt-1">0%</div></div>
-                    <div className="bg-slate-900/60 p-2 rounded-lg"><div className="text-slate-400">打野</div><div className="font-bold text-white mt-1">0%</div></div>
-                    <div className="bg-slate-900/60 p-2 rounded-lg"><div className="text-slate-400">中路</div><div className="font-bold text-white mt-1">0%</div></div>
-                    <div className="bg-slate-900/60 p-2 rounded-lg"><div className="text-slate-400">下路</div><div className="font-bold text-white mt-1">0%</div></div>
-                    <div className="bg-slate-900/60 p-2 rounded-lg border border-blue-500/50"><div className="text-blue-400 font-bold">輔助</div><div className="font-bold text-white mt-1">100%</div></div>
+                    <div className="p-2 bg-slate-900/40 rounded-lg"><div className="text-slate-400">上路</div><div className="font-bold text-white mt-1">0%</div></div>
+                    <div className="p-2 bg-slate-900/40 rounded-lg"><div className="text-slate-400">打野</div><div className="font-bold text-white mt-1">0%</div></div>
+                    <div className="p-2 bg-slate-900/40 rounded-lg"><div className="text-slate-400">中路</div><div className="font-bold text-white mt-1">0%</div></div>
+                    <div className="p-2 bg-slate-900/40 rounded-lg"><div className="text-slate-400">下路</div><div className="font-bold text-white mt-1">0%</div></div>
+                    <div className="p-2 bg-blue-900/30 border border-blue-500/40 rounded-lg"><div className="text-blue-400 font-bold">輔助</div><div className="font-bold text-blue-400 mt-1">100%</div></div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* 分頁 3：Champions (英雄專精數據) */}
+            {/* 3. Champions 頁面（對齊你的第4張圖） */}
             {activeTab === 'champions' && (
-              <div className="bg-[#0d111d] border border-slate-800 rounded-2xl overflow-hidden text-xs">
-                <div className="p-4 border-b border-slate-800 flex items-center justify-between font-bold text-slate-400">
+              <div className="bg-[#0b0f19] border border-slate-800/80 rounded-xl p-4 text-xs space-y-3">
+                <div className="flex justify-between text-slate-400 pb-2 border-b border-slate-800 font-bold">
                   <span>英雄專精數據 (共13位)</span>
                   <span>CS (小兵)</span>
                 </div>
-                <div className="divide-y divide-slate-800/60">
+
+                <div className="space-y-2">
                   {[
-                    { name: 'Locke', wins: '2勝 1敗', rate: '67%', kda: '5.20:1' },
-                    { name: 'Tristana', wins: '1勝 1敗', rate: '50%', kda: '2.86:1' },
-                    { name: 'Syndra', wins: '1勝 1敗', rate: '50%', kda: '5.67:1' },
-                    { name: 'Akali', wins: '1勝 1敗', rate: '50%', kda: '2.10:1' },
-                    { name: 'LeeSin', wins: '0勝 1敗', rate: '0%', kda: '2.50:1' },
-                    { name: 'Mel', wins: '1勝 0敗', rate: '100%', kda: ' Perfect:1' },
-                  ].map((c, i) => (
-                    <div key={i} className="p-3.5 flex items-center justify-between hover:bg-slate-900/40 transition">
+                    { name: 'Locke', win: '2勝 1敗 (67%)', kda: '5.20:1', cs: '0.0 CS' },
+                    { name: 'Tristana', win: '1勝 1敗 (50%)', kda: '2.86:1', cs: '0.0 CS' },
+                    { name: 'Syndra', win: '1勝 1敗 (50%)', kda: '5.67:1', cs: '0.0 CS' },
+                    { name: 'Akali', win: '1勝 1敗 (50%)', kda: '2.10:1', cs: '0.0 CS' },
+                    { name: 'LeeSin', win: '0勝 1敗 (0%)', kda: '2.50:1', cs: '0.0 CS' },
+                    { name: 'Mel', win: '1勝 0敗 (100%)', kda: 'Perfect:1', cs: '0.0 CS' },
+                  ].map((c) => (
+                    <div key={c.name} className="flex items-center justify-between p-2 hover:bg-slate-900/50 rounded-lg">
                       <div className="flex items-center gap-3">
-                        <img src={getChampionImg(c.name)} className="w-8 h-8 rounded-lg object-cover" />
-                        <span className="font-bold text-white text-sm">{c.name}</span>
+                        <img src={getChampionImg(c.name)} className="w-7 h-7 rounded object-cover" />
+                        <span className="font-bold text-white">{c.name}</span>
                       </div>
                       <div className="flex items-center gap-8 font-mono">
-                        <span className="text-blue-400">{c.wins} ({c.rate})</span>
-                        <span className="text-slate-200 font-bold">{c.kda}</span>
-                        <span className="text-slate-500">0.0 CS</span>
+                        <span className="text-blue-400">{c.win}</span>
+                        <span className="text-white font-bold">{c.kda}</span>
+                        <span className="text-slate-400">{c.cs}</span>
                       </div>
                     </div>
                   ))}
