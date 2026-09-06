@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 // Helper: 英雄頭像 CDN (加入完整預設圖標，防止 Locke 或未知英雄破圖)
 const getChampionImg = (name: string) => {
   if (!name || name === 'Locke' || name === 'Unknown') {
-    return 'https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/29.jpg';
+    return '';
   }
   const nameMap: Record<string, string> = {
     FiddleSticks: 'Fiddlesticks',
@@ -21,9 +21,9 @@ const getItemImg = (itemId: number) => {
   return `https://ddragon.leagueoflegends.com/cdn/14.5.1/img/item/${itemId}.png`;
 };
 
-// Helper: 段位 Icon (修復破圖)
+// Helper: 段位 Icon (修正破圖與 URL 相容性)
 const getRankIcon = (tier?: string) => {
-  if (!tier) return 'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/unranked.png';
+  if (!tier) return 'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/unranked.png';
   const cleanTier = tier.toLowerCase();
   return `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/${cleanTier}.png`;
 };
@@ -81,9 +81,9 @@ export default function Home() {
   const soloRank = data?.ranks?.find((r: any) => r.queueType === 'RANKED_SOLO_5x5');
   const flexRank = data?.ranks?.find((r: any) => r.queueType === 'RANKED_FLEX_SR');
 
-  // 路線相容性解析 (關鍵修正：避免首選角色比例全是 0%)
+  // 路線相容性解析 (避免首選角色全是 0%)
   const parseRole = (m: any) => {
-    const rawPos = (m.teamPosition || m.individualPosition || m.role || m.lane || '').toUpperCase();
+    const rawPos = (m.position || m.teamPosition || m.individualPosition || m.role || m.lane || '').toUpperCase();
     if (rawPos.includes('TOP')) return 'TOP';
     if (rawPos.includes('JUNGLE') || rawPos.includes('JUG')) return 'JUNGLE';
     if (rawPos.includes('MID') || rawPos.includes('MIDDLE')) return 'MIDDLE';
@@ -99,6 +99,7 @@ export default function Home() {
       return {
         total: 0, wins: 0, losses: 0, winRate: 0, avgK: '0.0', avgD: '0.0', avgA: '0.0', kdaRatio: '0.00', kpRate: 0, topChamps: [],
         roles: { TOP: 0, JUNGLE: 0, MIDDLE: 0, BOTTOM: 0, UTILITY: 0 },
+        roleWins: { TOP: 0, JUNGLE: 0, MIDDLE: 0, BOTTOM: 0, UTILITY: 0 },
       };
     }
 
@@ -120,6 +121,7 @@ export default function Home() {
 
     const champMap: Record<string, { name: string; games: number; wins: number; kills: number; deaths: number; assists: number }> = {};
     const rolesCount = { TOP: 0, JUNGLE: 0, MIDDLE: 0, BOTTOM: 0, UTILITY: 0 };
+    const rolesWinsCount = { TOP: 0, JUNGLE: 0, MIDDLE: 0, BOTTOM: 0, UTILITY: 0 };
 
     matches.forEach((m: any) => {
       const name = m.championName || 'Unknown';
@@ -130,9 +132,10 @@ export default function Home() {
       champMap[name].deaths += m.deaths || 0;
       champMap[name].assists += m.assists || 0;
 
-      // 正確累計路線
+      // 正確累計路線與該路線勝場
       const roleKey = parseRole(m);
       rolesCount[roleKey] += 1;
+      if (m.win) rolesWinsCount[roleKey] += 1;
     });
 
     const topChamps = Object.values(champMap)
@@ -144,7 +147,7 @@ export default function Home() {
         return { ...c, winRate: wr, kdaRatio: kda };
       });
 
-    return { total, wins, losses, winRate, avgK, avgD, avgA, kdaRatio, kpRate, topChamps, roles: rolesCount };
+    return { total, wins, losses, winRate, avgK, avgD, avgA, kdaRatio, kpRate, topChamps, roles: rolesCount, roleWins: rolesWinsCount };
   };
 
   const summaryStats = getSummaryStats();
@@ -311,40 +314,57 @@ export default function Home() {
       </section>
 
       <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-6">
-        {/* 左側段位 (修復破圖與圖片顯示) */}
+        {/* 左側段位 (修正破圖與 Icon 指向) */}
         <div className="space-y-4">
           <div className="bg-[#0f172a]/60 border border-slate-800/80 rounded-xl p-4 flex items-center gap-4">
             <div className="w-14 h-14 relative shrink-0 flex items-center justify-center bg-slate-800/40 rounded-lg p-1">
               <img
-                src={getRankIcon(soloRank?.tier || 'CHALLENGER')}
+                src={getRankIcon(soloRank?.tier)}
                 alt="Solo Rank"
                 className="w-full h-full object-contain"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = 'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/ranked-emblems/challenger.png';
+                  (e.target as HTMLImageElement).src = getRankIcon('');
                 }}
               />
             </div>
             <div>
               <div className="text-[11px] text-slate-400 font-bold">單/雙排積分</div>
               <div className="text-sm font-black text-slate-100 uppercase tracking-wide">
-                {soloRank ? `${soloRank.tier} ${soloRank.rank}` : 'CHALLENGER I'}
+                {soloRank ? `${soloRank.tier} ${soloRank.rank}` : 'UNRANKED'}
               </div>
-              <div className="text-xs text-slate-400 mt-0.5">
-                <span className="text-blue-400 font-bold">{soloRank?.leaguePoints || 1959} LP</span> · {soloRank?.wins || 372}勝 {soloRank?.losses || 307}敗 ({soloRank ? Math.round((soloRank.wins / (soloRank.wins + soloRank.losses)) * 100) : 55}%)
-              </div>
+              {soloRank ? (
+                <div className="text-xs text-slate-400 mt-0.5">
+                  <span className="text-blue-400 font-bold">{soloRank.leaguePoints} LP</span> · {soloRank.wins}勝 {soloRank.losses}敗 ({Math.round((soloRank.wins / (soloRank.wins + soloRank.losses)) * 100)}%)
+                </div>
+              ) : (
+                <div className="text-xs text-slate-500 mt-0.5">未定級 (Unranked)</div>
+              )}
             </div>
           </div>
 
           <div className="bg-[#0f172a]/60 border border-slate-800/80 rounded-xl p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-lg bg-slate-800/80 border border-slate-700/60 flex items-center justify-center shrink-0">
-              <span className="text-[10px] font-bold text-slate-400">UNRANKED</span>
+            <div className="w-12 h-12 rounded-lg bg-slate-800/80 border border-slate-700/60 flex items-center justify-center shrink-0 overflow-hidden p-1">
+              <img
+                src={getRankIcon(flexRank?.tier)}
+                alt="Flex Rank"
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = getRankIcon('');
+                }}
+              />
             </div>
             <div>
               <div className="text-[11px] text-slate-400 font-bold">彈性積分</div>
               <div className="text-sm font-black text-slate-100 uppercase tracking-wide">
                 {flexRank ? `${flexRank.tier} ${flexRank.rank}` : 'UNRANKED'}
               </div>
-              <div className="text-xs text-slate-500 mt-0.5">未定級 (Unranked)</div>
+              {flexRank ? (
+                <div className="text-xs text-slate-400 mt-0.5">
+                  <span className="text-blue-400 font-bold">{flexRank.leaguePoints} LP</span> · {flexRank.wins}勝 {flexRank.losses}敗
+                </div>
+              ) : (
+                <div className="text-xs text-slate-500 mt-0.5">未定級 (Unranked)</div>
+              )}
             </div>
           </div>
         </div>
@@ -400,21 +420,26 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* 首選角色與勝率 (修正柱狀圖高度與百分比顯示) */}
+                {/* 首選角色與勝率 (修正柱狀圖高度與勝率計算顯示) */}
                 <div className="flex flex-col justify-center">
                   <div className="text-[11px] text-slate-400 font-bold mb-2">首選角色與勝率</div>
                   <div className="grid grid-cols-5 gap-1.5 items-end h-16 text-center">
                     {['上', '打', '中', '下', '輔'].map((roleName, idx) => {
                       const keys = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'] as const;
                       const count = summaryStats.roles[keys[idx]];
-                      const percent = summaryStats.total > 0 ? Math.round((count / summaryStats.total) * 100) : 0;
+                      const wins = summaryStats.roleWins[keys[idx]];
+                      const roleWinRate = count > 0 ? Math.round((wins / count) * 100) : 0;
+                      const playPercent = summaryStats.total > 0 ? Math.round((count / summaryStats.total) * 100) : 0;
 
                       return (
                         <div key={roleName} className="flex flex-col items-center gap-1 h-full justify-end">
-                          <div className="w-full bg-slate-800/80 rounded-t h-12 flex items-end overflow-hidden">
+                          <span className="text-[9px] text-slate-400">
+                            {count > 0 ? `${roleWinRate}%` : '-'}
+                          </span>
+                          <div className="w-full bg-slate-800/80 rounded-t h-10 flex items-end overflow-hidden">
                             <div
                               className="w-full bg-blue-500 transition-all duration-300"
-                              style={{ height: `${percent > 0 ? percent : 0}%` }}
+                              style={{ height: `${playPercent > 0 ? playPercent : 0}%` }}
                             ></div>
                           </div>
                           <span className="text-[10px] text-slate-400">{roleName}</span>
@@ -526,8 +551,8 @@ export default function Home() {
                                         <div className="text-slate-400 text-[11px]">{pCs} CS</div>
                                       </div>
                                       <div className="text-center w-28 shrink-0 text-[11px]">
-                                        <div className="text-slate-200 font-medium">💥 {p.totalDamageDealtToChampions?.toLocaleString() || 0}</div>
-                                        <div className="text-amber-400">💰 {p.goldEarned?.toLocaleString() || 0}</div>
+                                        <div className="text-slate-200 font-medium"> {p.totalDamageDealtToChampions?.toLocaleString() || 0}</div>
+                                        <div className="text-amber-400"> {p.goldEarned?.toLocaleString() || 0}</div>
                                       </div>
                                       <div className="flex gap-1 shrink-0">
                                         {playerItems.map((itemId: number, itemIdx: number) => (
@@ -574,8 +599,8 @@ export default function Home() {
                                         <div className="text-slate-400 text-[11px]">{pCs} CS</div>
                                       </div>
                                       <div className="text-center w-28 shrink-0 text-[11px]">
-                                        <div className="text-slate-200 font-medium">💥 {p.totalDamageDealtToChampions?.toLocaleString() || 0}</div>
-                                        <div className="text-amber-400">💰 {p.goldEarned?.toLocaleString() || 0}</div>
+                                        <div className="text-slate-200 font-medium"> {p.totalDamageDealtToChampions?.toLocaleString() || 0}</div>
+                                        <div className="text-amber-400"> {p.goldEarned?.toLocaleString() || 0}</div>
                                       </div>
                                       <div className="flex gap-1 shrink-0">
                                         {playerItems.map((itemId: number, itemIdx: number) => (
