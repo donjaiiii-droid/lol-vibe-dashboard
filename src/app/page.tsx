@@ -21,7 +21,7 @@ const getItemImg = (itemId: number) => {
   return `https://ddragon.leagueoflegends.com/cdn/14.5.1/img/item/${itemId}.png`;
 };
 
-// Helper: 段位 Icon CDN
+// Helper: 段位 Icon CDN (修復破圖與版型)
 const getRankIcon = (tier?: string) => {
   if (!tier) return 'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/unranked.png';
   const cleanTier = tier.toLowerCase();
@@ -37,7 +37,7 @@ const formatDuration = (seconds: number) => {
 };
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'概要' | '風格' | 'Champions'>('風格');
+  const [activeTab, setActiveTab] = useState<'概要' | '風格' | 'Champions'>('概要');
   const [region, setRegion] = useState('kr');
   const [riotId, setRiotId] = useState('Hide on bush#KR1');
   const [loading, setLoading] = useState(false);
@@ -86,60 +86,64 @@ export default function Home() {
   const soloRank = data?.ranks?.find((r: any) => r.queueType === 'RANKED_SOLO_5x5');
   const flexRank = data?.ranks?.find((r: any) => r.queueType === 'RANKED_FLEX_SR');
 
-  // 1. 精準風格分析數據 (對照附圖 UI)
-  const getStyleAnalytics = () => {
+  // 概要統計計算 (近20場勝率、常用英雄、路線分佈)
+  const getSummaryStats = () => {
     const matches = data?.matches || [];
-    const totalGames = matches.length;
-    if (totalGames === 0) {
+    const total = matches.length;
+    if (total === 0) {
       return {
-        totalGames: 0,
+        total: 0,
         wins: 0,
         losses: 0,
         winRate: 0,
-        avgKda: '0.00',
-        champPoolCount: 0,
-        champPoolRate: 0,
+        avgK: '0.0',
+        avgD: '0.0',
+        avgA: '0.0',
+        kdaRatio: '0.00',
         kpRate: 0,
-        avgDuration: '0:00',
-        blueWinRate: 0,
-        redWinRate: 0,
-        bluePickRate: 0,
-        redPickRate: 0,
+        topChamps: [],
         roles: { TOP: 0, JUNGLE: 0, MIDDLE: 0, BOTTOM: 0, UTILITY: 0 },
-        weeklyActivity: [0, 0, 0, 0, 0, 0, 0],
       };
     }
 
     const wins = matches.filter((m: any) => m.win).length;
-    const losses = totalGames - wins;
-    const winRate = Math.round((wins / totalGames) * 100);
+    const losses = total - wins;
+    const winRate = Math.round((wins / total) * 100);
 
-    const totalKda = matches.reduce((sum: number, m: any) => sum + (m.kda || 0), 0);
-    const avgKda = (totalKda / totalGames).toFixed(2);
+    const killsSum = matches.reduce((sum: number, m: any) => sum + (m.kills || 0), 0);
+    const deathsSum = matches.reduce((sum: number, m: any) => sum + (m.deaths || 0), 0);
+    const assistsSum = matches.reduce((sum: number, m: any) => sum + (m.assists || 0), 0);
 
-    // 英雄池數與涵蓋率
-    const uniqueChamps = new Set(matches.map((m: any) => m.championName)).size;
-    const champPoolRate = Math.round((uniqueChamps / 168) * 100); // 聯賽約 168 英雄
+    const avgK = (killsSum / total).toFixed(1);
+    const avgD = (deathsSum / total).toFixed(1);
+    const avgA = (assistsSum / total).toFixed(1);
+    const kdaRatio = deathsSum === 0 ? 'Perfect' : ((killsSum + assistsSum) / deathsSum).toFixed(2);
 
-    // 擊殺參與率與平均時間
     const totalKp = matches.reduce((sum: number, m: any) => sum + (m.killParticipation || 0), 0);
-    const kpRate = Math.round(totalKp / totalGames);
+    const kpRate = Math.round(totalKp / total);
 
-    const totalDurationSec = matches.reduce((sum: number, m: any) => sum + (m.gameDuration || 0), 0);
-    const avgDuration = formatDuration(totalDurationSec / totalGames);
+    // 最常使用英雄 (前 3 位)
+    const champMap: Record<string, { name: string; games: number; wins: number; kills: number; deaths: number; assists: number }> = {};
+    matches.forEach((m: any) => {
+      const name = m.championName || 'Unknown';
+      if (!champMap[name]) {
+        champMap[name] = { name, games: 0, wins: 0, kills: 0, deaths: 0, assists: 0 };
+      }
+      champMap[name].games += 1;
+      if (m.win) champMap[name].wins += 1;
+      champMap[name].kills += m.kills || 0;
+      champMap[name].deaths += m.deaths || 0;
+      champMap[name].assists += m.assists || 0;
+    });
 
-    // 藍紅方勝率與選角率
-    const blueMatches = matches.filter((m: any) => m.teamId === 100 || m.isBlueSide);
-    const redMatches = matches.filter((m: any) => m.teamId === 200 || (!m.isBlueSide && m.teamId !== 100));
-
-    const blueWins = blueMatches.filter((m: any) => m.win).length;
-    const redWins = redMatches.filter((m: any) => m.win).length;
-
-    const blueWinRate = blueMatches.length > 0 ? ((blueWins / blueMatches.length) * 100).toFixed(1) : '0.0';
-    const redWinRate = redMatches.length > 0 ? ((redWins / redMatches.length) * 100).toFixed(1) : '0.0';
-
-    const bluePickRate = ((blueMatches.length / totalGames) * 100).toFixed(1);
-    const redPickRate = ((redMatches.length / totalGames) * 100).toFixed(1);
+    const topChamps = Object.values(champMap)
+      .sort((a, b) => b.games - a.games)
+      .slice(0, 3)
+      .map((c) => {
+        const wr = Math.round((c.wins / c.games) * 100);
+        const kda = c.deaths === 0 ? 'Perfect' : ((c.kills + c.assists) / c.deaths).toFixed(2);
+        return { ...c, winRate: wr, kdaRatio: kda };
+      });
 
     // 路線分佈
     const rolesCount = { TOP: 0, JUNGLE: 0, MIDDLE: 0, BOTTOM: 0, UTILITY: 0 };
@@ -152,7 +156,66 @@ export default function Home() {
       else rolesCount.UTILITY += 1;
     });
 
-    // 每週活動場次
+    return {
+      total,
+      wins,
+      losses,
+      winRate,
+      avgK,
+      avgD,
+      avgA,
+      kdaRatio,
+      kpRate,
+      topChamps,
+      roles: rolesCount,
+    };
+  };
+
+  const summaryStats = getSummaryStats();
+
+  // 風格分析數據
+  const getStyleAnalytics = () => {
+    const matches = data?.matches || [];
+    const totalGames = matches.length;
+    if (totalGames === 0) {
+      return {
+        totalGames: 0, wins: 0, losses: 0, winRate: 0, avgKda: '0.00', champPoolCount: 0, champPoolRate: 0, kpRate: 0, avgDuration: '0:00',
+        blueWinRate: '0.0', redWinRate: '0.0', bluePickRate: '0.0', redPickRate: '0.0', roles: { TOP: 0, JUNGLE: 0, MIDDLE: 0, BOTTOM: 0, UTILITY: 0 }, weeklyActivity: [0, 0, 0, 0, 0, 0, 0],
+      };
+    }
+
+    const wins = matches.filter((m: any) => m.win).length;
+    const losses = totalGames - wins;
+    const winRate = Math.round((wins / totalGames) * 100);
+    const totalKda = matches.reduce((sum: number, m: any) => sum + (m.kda || 0), 0);
+    const avgKda = (totalKda / totalGames).toFixed(2);
+    const uniqueChamps = new Set(matches.map((m: any) => m.championName)).size;
+    const champPoolRate = Math.round((uniqueChamps / 168) * 100);
+    const totalKp = matches.reduce((sum: number, m: any) => sum + (m.killParticipation || 0), 0);
+    const kpRate = Math.round(totalKp / totalGames);
+    const totalDurationSec = matches.reduce((sum: number, m: any) => sum + (m.gameDuration || 0), 0);
+    const avgDuration = formatDuration(totalDurationSec / totalGames);
+
+    const blueMatches = matches.filter((m: any) => m.teamId === 100 || m.isBlueSide);
+    const redMatches = matches.filter((m: any) => m.teamId === 200 || (!m.isBlueSide && m.teamId !== 100));
+    const blueWins = blueMatches.filter((m: any) => m.win).length;
+    const redWins = redMatches.filter((m: any) => m.win).length;
+
+    const blueWinRate = blueMatches.length > 0 ? ((blueWins / blueMatches.length) * 100).toFixed(1) : '0.0';
+    const redWinRate = redMatches.length > 0 ? ((redWins / redMatches.length) * 100).toFixed(1) : '0.0';
+    const bluePickRate = ((blueMatches.length / totalGames) * 100).toFixed(1);
+    const redPickRate = ((redMatches.length / totalGames) * 100).toFixed(1);
+
+    const rolesCount = { TOP: 0, JUNGLE: 0, MIDDLE: 0, BOTTOM: 0, UTILITY: 0 };
+    matches.forEach((m: any) => {
+      const pos = (m.teamPosition || m.individualPosition || 'UTILITY').toUpperCase();
+      if (pos.includes('TOP')) rolesCount.TOP += 1;
+      else if (pos.includes('JUNGLE')) rolesCount.JUNGLE += 1;
+      else if (pos.includes('MID')) rolesCount.MIDDLE += 1;
+      else if (pos.includes('BOTTOM') || pos.includes('ADC')) rolesCount.BOTTOM += 1;
+      else rolesCount.UTILITY += 1;
+    });
+
     const weeklyActivity = [0, 0, 0, 0, 0, 0, 0];
     matches.forEach((m: any) => {
       if (m.gameCreation) {
@@ -162,27 +225,14 @@ export default function Home() {
     });
 
     return {
-      totalGames,
-      wins,
-      losses,
-      winRate,
-      avgKda,
-      champPoolCount: uniqueChamps,
-      champPoolRate,
-      kpRate,
-      avgDuration,
-      blueWinRate,
-      redWinRate,
-      bluePickRate,
-      redPickRate,
-      roles: rolesCount,
-      weeklyActivity,
+      totalGames, wins, losses, winRate, avgKda, champPoolCount: uniqueChamps, champPoolRate, kpRate, avgDuration,
+      blueWinRate, redWinRate, bluePickRate, redPickRate, roles: rolesCount, weeklyActivity,
     };
   };
 
   const styleStats = getStyleAnalytics();
 
-  // 2. Champions 專精數據修復版 (DPM 與 CS 正確計算)
+  // Champions 專精數據
   const getChampionStats = () => {
     if (!data?.matches || data.matches.length === 0) return [];
     const statsMap: Record<string, any> = {};
@@ -191,17 +241,7 @@ export default function Home() {
       const name = m.championName || 'Unknown';
       if (!statsMap[name]) {
         statsMap[name] = {
-          name,
-          games: 0,
-          wins: 0,
-          losses: 0,
-          kills: 0,
-          deaths: 0,
-          assists: 0,
-          totalDamage: 0,
-          totalCs: 0,
-          totalGameDurationMin: 0,
-          kpSum: 0,
+          name, games: 0, wins: 0, losses: 0, kills: 0, deaths: 0, assists: 0, totalDamage: 0, totalCs: 0, totalGameDurationMin: 0, kpSum: 0,
         };
       }
 
@@ -227,10 +267,7 @@ export default function Home() {
         const avgKills = champ.kills / champ.games;
         const avgDeaths = champ.deaths / champ.games;
         const avgAssists = champ.assists / champ.games;
-        const kdaRatio =
-          avgDeaths === 0
-            ? 'Perfect'
-            : ((avgKills + avgAssists) / avgDeaths).toFixed(2);
+        const kdaRatio = avgDeaths === 0 ? 'Perfect' : ((avgKills + avgAssists) / avgDeaths).toFixed(2);
 
         const totalMin = champ.totalGameDurationMin || 1;
         const avgDpm = Math.round(champ.totalDamage / totalMin);
@@ -243,17 +280,11 @@ export default function Home() {
           avgKills: avgKills.toFixed(1),
           avgDeaths: avgDeaths.toFixed(1),
           avgAssists: avgAssists.toFixed(1),
-          kdaRatio,
-          avgDpm,
-          avgCs,
-          avgCsPerMin,
-          avgKp,
+          kdaRatio, avgDpm, avgCs, avgCsPerMin, avgKp,
           winRate: Math.round((champ.wins / champ.games) * 100),
         };
       })
-      .filter((champ: any) =>
-        champ.name.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+      .filter((champ: any) => champ.name.toLowerCase().includes(searchTerm.toLowerCase()))
       .sort((a: any, b: any) => b.games - a.games);
   };
 
@@ -314,13 +345,13 @@ export default function Home() {
 
       {/* 主要內容區 */}
       <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-6">
-        {/* 左側：段位資訊 (完全比對原圖片樣式與徽章圖示) */}
+        {/* 左側：段位資訊 (單雙排 / 彈性積分) */}
         <div className="space-y-4">
           <div className="bg-[#0f172a]/60 border border-slate-800/80 rounded-xl p-4 flex items-center gap-4">
             <img
               src={getRankIcon(soloRank?.tier)}
               alt="Solo Rank Icon"
-              className="w-14 h-14 object-contain"
+              className="w-14 h-14 object-contain shrink-0"
             />
             <div>
               <div className="text-[11px] text-slate-400 font-bold">單/雙排積分</div>
@@ -341,189 +372,257 @@ export default function Home() {
             <img
               src={getRankIcon(flexRank?.tier)}
               alt="Flex Rank Icon"
-              className="w-14 h-14 object-contain opacity-80"
+              className="w-14 h-14 object-contain shrink-0 opacity-80"
             />
             <div>
               <div className="text-[11px] text-slate-400 font-bold">彈性積分</div>
               <div className="text-sm font-black text-slate-100 uppercase tracking-wide">
-                {flexRank ? `${flexRank.tier} ${flexRank.rank}` : '未定級 (Unranked)'}
+                {flexRank ? `${flexRank.tier} ${flexRank.rank}` : 'UNRANKED'}
               </div>
-              {flexRank && (
+              {flexRank ? (
                 <div className="text-xs text-slate-400 mt-0.5">
                   <span className="text-blue-400 font-bold">{flexRank.leaguePoints} LP</span> · {flexRank.wins}勝 {flexRank.losses}敗
                 </div>
+              ) : (
+                <div className="text-xs text-slate-500 mt-0.5">未定級 (Unranked)</div>
               )}
             </div>
           </div>
         </div>
 
-        {/* 右側：頁面切換 */}
+        {/* 右側：頁面切換內容 */}
         <div className="md:col-span-3 space-y-4">
-          {/* 1. 概要分頁 */}
+          {/* 1. 概要分頁 (完全還原紅圈標註的近20場綜合統計卡片) */}
           {activeTab === '概要' && (
-            <div className="space-y-3">
-              {data?.matches?.map((match: any) => {
-                const isExpanded = expandedMatchId === match.matchId;
-
-                return (
-                  <div
-                    key={match.matchId}
-                    className={`border rounded-xl transition-all overflow-hidden ${
-                      match.win ? 'bg-blue-950/20 border-blue-800/40' : 'bg-red-950/20 border-red-800/40'
-                    }`}
-                  >
-                    <div className="p-4 flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={getChampionImg(match.championName)}
-                          alt={match.championName}
-                          className="w-12 h-12 rounded-lg border border-slate-700 object-cover"
-                        />
-                        <div>
-                          <div className="font-bold text-sm text-slate-100 flex items-center gap-2">
-                            {match.championName}
-                            <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">
-                              {match.gameMode}
-                            </span>
-                          </div>
-                          <div className="text-xs text-slate-400 mt-1">
-                            CS: {match.cs ?? (match.totalMinionsKilled || 0) + (match.neutralMinionsKilled || 0)} ({match.csPerMin || 0}/m)
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-center">
-                        <div className="text-sm font-bold">
-                          {match.kills} / <span className="text-red-400">{match.deaths}</span> / {match.assists}
-                        </div>
-                        <div className="text-xs text-slate-400 mt-0.5">
-                          傷害: {match.totalDamageDealtToChampions?.toLocaleString() || 0}
-                        </div>
-                      </div>
-
-                      <div className="hidden sm:flex gap-1">
-                        {match.items?.map((item: number, idx: number) => (
-                          <div key={idx} className="w-6 h-6 bg-slate-800/60 rounded border border-slate-700/50 overflow-hidden">
-                            {item > 0 && (
-                              <img src={getItemImg(item)!} alt="item" className="w-full h-full object-cover" />
-                            )}
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <span className={`text-xs font-bold ${match.win ? 'text-blue-400' : 'text-red-400'}`}>
-                          {match.win ? '勝利' : '敗北'}
-                        </span>
-                        <button
-                          onClick={() => toggleExpand(match.matchId)}
-                          className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 transition-transform"
-                        >
-                          <span className={`inline-block transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
-                            ▼
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* 10人詳細戰績區域 */}
-                    {isExpanded && match.participants && (
-                      <div className="border-t border-slate-800/80 bg-slate-900/90 p-4 space-y-4">
-                        {/* 藍隊 */}
-                        <div>
-                          <div className="text-xs font-bold text-blue-400 mb-2 flex justify-between items-center">
-                            <span>藍隊 (Team 100)</span>
-                            <span className="text-slate-500 font-normal">KDA / 傷害 / 金幣 / 裝備</span>
-                          </div>
-                          <div className="space-y-1.5">
-                            {match.participants
-                              .filter((p: any) => p.teamId === 100)
-                              .map((p: any, idx: number) => {
-                                const playerItems = [p.item0, p.item1, p.item2, p.item3, p.item4, p.item5, p.item6];
-                                const pCs = p.cs ?? (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0);
-
-                                return (
-                                  <div key={idx} className="flex flex-wrap md:flex-nowrap items-center justify-between text-xs py-2 px-3 rounded bg-slate-800/40 gap-2">
-                                    <div className="flex items-center gap-2 w-44 shrink-0">
-                                      <img src={getChampionImg(p.championName)} className="w-6 h-6 rounded-md object-cover border border-slate-700" alt="" />
-                                      <span className="font-medium text-slate-200 truncate">{p.summonerName || p.riotIdGameName || '玩家'}</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-slate-300 w-36 shrink-0 justify-center">
-                                      <div>{p.kills} / <span className="text-red-400">{p.deaths}</span> / {p.assists}</div>
-                                      <div className="text-slate-400 text-[11px]">{pCs} CS</div>
-                                    </div>
-                                    <div className="text-center w-28 shrink-0 text-[11px]">
-                                      <div className="text-slate-200 font-medium">💥 {p.totalDamageDealtToChampions?.toLocaleString() || 0}</div>
-                                      <div className="text-amber-400">💰 {p.goldEarned?.toLocaleString() || 0}</div>
-                                    </div>
-                                    <div className="flex gap-1 shrink-0">
-                                      {playerItems.map((itemId: number, itemIdx: number) => (
-                                        <div key={itemIdx} className="w-5 h-5 bg-slate-900/80 rounded border border-slate-700/60 overflow-hidden">
-                                          {itemId > 0 && getItemImg(itemId) && (
-                                            <img src={getItemImg(itemId)!} alt="" className="w-full h-full object-cover" />
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        </div>
-
-                        {/* 紅隊 */}
-                        <div>
-                          <div className="text-xs font-bold text-red-400 mb-2 flex justify-between items-center">
-                            <span>紅隊 (Team 200)</span>
-                            <span className="text-slate-500 font-normal">KDA / 傷害 / 金幣 / 裝備</span>
-                          </div>
-                          <div className="space-y-1.5">
-                            {match.participants
-                              .filter((p: any) => p.teamId === 200)
-                              .map((p: any, idx: number) => {
-                                const playerItems = [p.item0, p.item1, p.item2, p.item3, p.item4, p.item5, p.item6];
-                                const pCs = p.cs ?? (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0);
-
-                                return (
-                                  <div key={idx} className="flex flex-wrap md:flex-nowrap items-center justify-between text-xs py-2 px-3 rounded bg-slate-800/40 gap-2">
-                                    <div className="flex items-center gap-2 w-44 shrink-0">
-                                      <img src={getChampionImg(p.championName)} className="w-6 h-6 rounded-md object-cover border border-slate-700" alt="" />
-                                      <span className="font-medium text-slate-200 truncate">{p.summonerName || p.riotIdGameName || '玩家'}</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-slate-300 w-36 shrink-0 justify-center">
-                                      <div>{p.kills} / <span className="text-red-400">{p.deaths}</span> / {p.assists}</div>
-                                      <div className="text-slate-400 text-[11px]">{pCs} CS</div>
-                                    </div>
-                                    <div className="text-center w-28 shrink-0 text-[11px]">
-                                      <div className="text-slate-200 font-medium">💥 {p.totalDamageDealtToChampions?.toLocaleString() || 0}</div>
-                                      <div className="text-amber-400">💰 {p.goldEarned?.toLocaleString() || 0}</div>
-                                    </div>
-                                    <div className="flex gap-1 shrink-0">
-                                      {playerItems.map((itemId: number, itemIdx: number) => (
-                                        <div key={itemIdx} className="w-5 h-5 bg-slate-900/80 rounded border border-slate-700/60 overflow-hidden">
-                                          {itemId > 0 && getItemImg(itemId) && (
-                                            <img src={getItemImg(itemId)!} alt="" className="w-full h-full object-cover" />
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        </div>
-                      </div>
-                    )}
+            <div className="space-y-4">
+              {/* 紅圈區塊：近20場對戰總結數據列 */}
+              <div className="bg-[#0f172a]/60 border border-slate-800/80 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                {/* 第一欄：勝率圓環與 KDA */}
+                <div className="flex items-center gap-4 border-r border-slate-800/60 pr-2">
+                  <div className="relative w-16 h-16 rounded-full border-4 border-blue-500/30 flex items-center justify-center bg-blue-950/20 shrink-0">
+                    <span className="text-sm font-black text-blue-400">{summaryStats.winRate}%</span>
                   </div>
-                );
-              })}
+                  <div>
+                    <div className="text-slate-400 text-[11px] font-bold">
+                      {summaryStats.total}場對戰 {summaryStats.wins}勝 {summaryStats.losses}敗
+                    </div>
+                    <div className="text-sm font-bold text-slate-100 mt-1">
+                      {summaryStats.avgK} / <span className="text-red-400">{summaryStats.avgD}</span> / {summaryStats.avgA}
+                    </div>
+                    <div className="text-base font-black text-blue-400 mt-0.5">
+                      {summaryStats.kdaRatio} :1
+                    </div>
+                    <div className="text-[10px] text-slate-500">參戰率 {summaryStats.kpRate}%</div>
+                  </div>
+                </div>
+
+                {/* 第二欄：最近20場英雄表現 */}
+                <div className="space-y-1.5 border-r border-slate-800/60 pr-2 flex flex-col justify-center">
+                  <div className="text-[11px] text-slate-400 font-bold mb-1">最近20場英雄表現</div>
+                  {summaryStats.topChamps.length > 0 ? (
+                    summaryStats.topChamps.map((c) => (
+                      <div key={c.name} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <img src={getChampionImg(c.name)} className="w-5 h-5 rounded border border-slate-700" alt="" />
+                          <span className="text-slate-300 font-medium">{c.name}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-400">{c.winRate}% <span className="text-[10px]">({c.wins}勝/{c.games - c.wins}敗)</span></span>
+                          <span className="font-bold text-blue-400">{c.kdaRatio}:1</span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-slate-500">暫無對戰記錄</div>
+                  )}
+                </div>
+
+                {/* 第三欄：首選角色與勝率 */}
+                <div className="flex flex-col justify-center">
+                  <div className="text-[11px] text-slate-400 font-bold mb-2">首選角色與勝率</div>
+                  <div className="grid grid-cols-5 gap-1 items-end h-14 text-center">
+                    {['上', '打', '中', '下', '輔'].map((roleName, idx) => {
+                      const keys = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'] as const;
+                      const count = summaryStats.roles[keys[idx]];
+                      const percent = summaryStats.total > 0 ? Math.round((count / summaryStats.total) * 100) : 0;
+
+                      return (
+                        <div key={roleName} className="flex flex-col items-center gap-1">
+                          <div className="w-full bg-slate-800 rounded-t h-10 flex items-end overflow-hidden">
+                            <div className="w-full bg-blue-600" style={{ height: `${percent}%` }}></div>
+                          </div>
+                          <span className="text-[10px] text-slate-400">{roleName}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* 對戰清單 */}
+              <div className="space-y-3">
+                {data?.matches?.map((match: any) => {
+                  const isExpanded = expandedMatchId === match.matchId;
+
+                  return (
+                    <div
+                      key={match.matchId}
+                      className={`border rounded-xl transition-all overflow-hidden ${
+                        match.win ? 'bg-blue-950/20 border-blue-800/40' : 'bg-red-950/20 border-red-800/40'
+                      }`}
+                    >
+                      <div className="p-4 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={getChampionImg(match.championName)}
+                            alt={match.championName}
+                            className="w-12 h-12 rounded-lg border border-slate-700 object-cover"
+                          />
+                          <div>
+                            <div className="font-bold text-sm text-slate-100 flex items-center gap-2">
+                              {match.championName}
+                              <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">
+                                {match.gameMode}
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-400 mt-1">
+                              CS: {match.cs ?? (match.totalMinionsKilled || 0) + (match.neutralMinionsKilled || 0)} ({match.csPerMin || 0}/m)
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-center">
+                          <div className="text-sm font-bold">
+                            {match.kills} / <span className="text-red-400">{match.deaths}</span> / {match.assists}
+                          </div>
+                          <div className="text-xs text-slate-400 mt-0.5">
+                            傷害: {match.totalDamageDealtToChampions?.toLocaleString() || 0}
+                          </div>
+                        </div>
+
+                        <div className="hidden sm:flex gap-1">
+                          {match.items?.map((item: number, idx: number) => (
+                            <div key={idx} className="w-6 h-6 bg-slate-800/60 rounded border border-slate-700/50 overflow-hidden">
+                              {item > 0 && (
+                                <img src={getItemImg(item)!} alt="item" className="w-full h-full object-cover" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className={`text-xs font-bold ${match.win ? 'text-blue-400' : 'text-red-400'}`}>
+                            {match.win ? '勝利' : '敗北'}
+                          </span>
+                          <button
+                            onClick={() => toggleExpand(match.matchId)}
+                            className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 transition-transform"
+                          >
+                            <span className={`inline-block transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                              ▼
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 10人詳細戰績區塊 */}
+                      {isExpanded && match.participants && (
+                        <div className="border-t border-slate-800/80 bg-slate-900/90 p-4 space-y-4">
+                          {/* 藍隊 */}
+                          <div>
+                            <div className="text-xs font-bold text-blue-400 mb-2 flex justify-between items-center">
+                              <span>藍隊 (Team 100)</span>
+                              <span className="text-slate-500 font-normal">KDA / 傷害 / 金幣 / 裝備</span>
+                            </div>
+                            <div className="space-y-1.5">
+                              {match.participants
+                                .filter((p: any) => p.teamId === 100)
+                                .map((p: any, idx: number) => {
+                                  const playerItems = [p.item0, p.item1, p.item2, p.item3, p.item4, p.item5, p.item6];
+                                  const pCs = p.cs ?? (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0);
+
+                                  return (
+                                    <div key={idx} className="flex flex-wrap md:flex-nowrap items-center justify-between text-xs py-2 px-3 rounded bg-slate-800/40 gap-2">
+                                      <div className="flex items-center gap-2 w-44 shrink-0">
+                                        <img src={getChampionImg(p.championName)} className="w-6 h-6 rounded-md object-cover border border-slate-700" alt="" />
+                                        <span className="font-medium text-slate-200 truncate">{p.summonerName || p.riotIdGameName || '玩家'}</span>
+                                      </div>
+                                      <div className="flex items-center gap-3 text-slate-300 w-36 shrink-0 justify-center">
+                                        <div>{p.kills} / <span className="text-red-400">{p.deaths}</span> / {p.assists}</div>
+                                        <div className="text-slate-400 text-[11px]">{pCs} CS</div>
+                                      </div>
+                                      <div className="text-center w-28 shrink-0 text-[11px]">
+                                        <div className="text-slate-200 font-medium">💥 {p.totalDamageDealtToChampions?.toLocaleString() || 0}</div>
+                                        <div className="text-amber-400">💰 {p.goldEarned?.toLocaleString() || 0}</div>
+                                      </div>
+                                      <div className="flex gap-1 shrink-0">
+                                        {playerItems.map((itemId: number, itemIdx: number) => (
+                                          <div key={itemIdx} className="w-5 h-5 bg-slate-900/80 rounded border border-slate-700/60 overflow-hidden">
+                                            {itemId > 0 && getItemImg(itemId) && (
+                                              <img src={getItemImg(itemId)!} alt="" className="w-full h-full object-cover" />
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </div>
+
+                          {/* 紅隊 */}
+                          <div>
+                            <div className="text-xs font-bold text-red-400 mb-2 flex justify-between items-center">
+                              <span>紅隊 (Team 200)</span>
+                              <span className="text-slate-500 font-normal">KDA / 傷害 / 金幣 / 裝備</span>
+                            </div>
+                            <div className="space-y-1.5">
+                              {match.participants
+                                .filter((p: any) => p.teamId === 200)
+                                .map((p: any, idx: number) => {
+                                  const playerItems = [p.item0, p.item1, p.item2, p.item3, p.item4, p.item5, p.item6];
+                                  const pCs = p.cs ?? (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0);
+
+                                  return (
+                                    <div key={idx} className="flex flex-wrap md:flex-nowrap items-center justify-between text-xs py-2 px-3 rounded bg-slate-800/40 gap-2">
+                                      <div className="flex items-center gap-2 w-44 shrink-0">
+                                        <img src={getChampionImg(p.championName)} className="w-6 h-6 rounded-md object-cover border border-slate-700" alt="" />
+                                        <span className="font-medium text-slate-200 truncate">{p.summonerName || p.riotIdGameName || '玩家'}</span>
+                                      </div>
+                                      <div className="flex items-center gap-3 text-slate-300 w-36 shrink-0 justify-center">
+                                        <div>{p.kills} / <span className="text-red-400">{p.deaths}</span> / {p.assists}</div>
+                                        <div className="text-slate-400 text-[11px]">{pCs} CS</div>
+                                      </div>
+                                      <div className="text-center w-28 shrink-0 text-[11px]">
+                                        <div className="text-slate-200 font-medium">💥 {p.totalDamageDealtToChampions?.toLocaleString() || 0}</div>
+                                        <div className="text-amber-400">💰 {p.goldEarned?.toLocaleString() || 0}</div>
+                                      </div>
+                                      <div className="flex gap-1 shrink-0">
+                                        {playerItems.map((itemId: number, itemIdx: number) => (
+                                          <div key={itemIdx} className="w-5 h-5 bg-slate-900/80 rounded border border-slate-700/60 overflow-hidden">
+                                            {itemId > 0 && getItemImg(itemId) && (
+                                              <img src={getItemImg(itemId)!} alt="" className="w-full h-full object-cover" />
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
-          {/* 2. 風格分頁 (完全對照上圖的正確排版與數據塊) */}
+          {/* 2. 風格分頁 */}
           {activeTab === '風格' && (
             <div className="space-y-4">
-              {/* 頂部四個大指標卡片 */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-[#0f172a]/60 border border-slate-800/80 rounded-xl p-4 text-center">
                   <div className="text-xs text-slate-400 font-bold">場次</div>
@@ -548,7 +647,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 中間雙欄：績效指標 vs 藍紅方數據 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-[#0f172a]/60 border border-slate-800/80 rounded-xl p-5">
                   <div className="text-xs font-bold text-slate-300 mb-4">績效指標</div>
@@ -597,52 +695,6 @@ export default function Home() {
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
-
-              {/* 角色路線分佈 */}
-              <div className="bg-[#0f172a]/60 border border-slate-800/80 rounded-xl p-5">
-                <div className="text-xs font-bold text-slate-300 mb-3">角色路線分佈</div>
-                <div className="w-full h-3 bg-purple-600 rounded-full mb-4"></div>
-                <div className="grid grid-cols-5 gap-2 text-center text-xs">
-                  {['上路', '打野', '中路', '下路', '輔助'].map((roleName, idx) => {
-                    const keys = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'] as const;
-                    const count = styleStats.roles[keys[idx]];
-                    const percent = styleStats.totalGames > 0 ? Math.round((count / styleStats.totalGames) * 100) : 0;
-
-                    return (
-                      <div key={roleName} className="bg-[#070a12]/80 p-3 rounded-xl border border-slate-800/40">
-                        <div className="text-slate-400">{roleName}</div>
-                        <div className="text-sm font-black text-slate-100 mt-1">{percent}%</div>
-                        <div className="text-[10px] text-slate-500 mt-0.5">{count}場</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 每週活動場次 */}
-              <div className="bg-[#0f172a]/60 border border-slate-800/80 rounded-xl p-5">
-                <div className="text-xs font-bold text-slate-300 mb-4">每週活動場次</div>
-                <div className="grid grid-cols-7 gap-3 items-end h-36 bg-[#070a12]/80 p-4 rounded-xl border border-slate-800/40">
-                  {['日', '一', '二', '三', '四', '五', '六'].map((dayName, idx) => {
-                    const count = styleStats.weeklyActivity[idx];
-                    const maxCount = Math.max(...styleStats.weeklyActivity, 1);
-                    const heightPercent = Math.round((count / maxCount) * 100);
-
-                    return (
-                      <div key={dayName} className="flex flex-col items-center gap-2 h-full justify-end">
-                        <span className="text-xs text-slate-200 font-bold">{count}</span>
-                        <div className="w-full bg-slate-800/50 rounded-md flex items-end h-20 overflow-hidden">
-                          <div
-                            className="w-full bg-slate-600 rounded-md transition-all duration-300"
-                            style={{ height: `${heightPercent}%` }}
-                          ></div>
-                        </div>
-                        <span className="text-xs text-slate-400">{dayName}</span>
-                      </div>
-                    );
-                  })}
                 </div>
               </div>
             </div>
