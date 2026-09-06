@@ -5,10 +5,20 @@ const API_KEY = process.env.RIOT_API_KEY;
 // 1. 正確的區域映射表
 const REGION_MAPPING: Record<string, { routing: string; platform: string }> = {
   kr: { routing: 'asia', platform: 'kr' },
-  tw2: { routing: 'asia', platform: 'tw2' }, // 若抓不到可試著改成 routing: 'sea'
+  tw2: { routing: 'asia', platform: 'tw2' },
   na1: { routing: 'americas', platform: 'na1' },
   euw1: { routing: 'europe', platform: 'euw1' },
 };
+
+// 定義 Rank 型別介面
+interface RankInfo {
+  tier: string;
+  rank: string;
+  leaguePoints: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -40,7 +50,8 @@ export async function GET(request: Request) {
       `https://${regionConfig.platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}?api_key=${API_KEY}`
     );
 
-    let ranks = { solo: null, flex: null };
+    // 明確標註 ranks 的 TypeScript 型別
+    let ranks: { solo: RankInfo | null; flex: RankInfo | null } = { solo: null, flex: null };
 
     if (leagueRes.ok) {
       const leagueData = await leagueRes.json();
@@ -67,12 +78,14 @@ export async function GET(request: Request) {
       };
     }
 
-    // 3. 抓取對戰 ID 列表 (Match-v5 IDs) - 之前漏掉的部分！
+    // 3. 抓取對戰 ID 列表 (Match-v5 IDs)
     const matchIdsRes = await fetch(
       `https://${regionConfig.routing}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=0&count=10&api_key=${API_KEY}`
     );
 
-    let matches = [];
+    // 明確標註 matches 陣列型別
+    let matches: any[] = [];
+
     if (matchIdsRes.ok) {
       const matchIds: string[] = await matchIdsRes.json();
 
@@ -108,12 +121,12 @@ export async function GET(request: Request) {
           item4: playerParticipant?.item4,
           item5: playerParticipant?.item5,
           item6: playerParticipant?.item6,
-          participants: detail.info.participants // 傳回 10 位玩家資料供展開使用
+          participants: detail.info.participants
         };
       });
 
       const fetchedMatches = await Promise.all(matchPromises);
-      matches = fetchedMatches.filter((m) => m !== null);
+      matches = fetchedMatches.filter((m): m is NonNullable<typeof m> => m !== null);
     }
 
     // 回傳完整結果給前端
