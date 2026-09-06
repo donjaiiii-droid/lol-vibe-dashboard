@@ -13,22 +13,33 @@ const REGION_MAPPING: Record<string, { accountRouting: string; matchRouting: str
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const riotId = searchParams.get('riotId');
+  
+  let riotId = searchParams.get('riotId') || '';
+  let gameName = searchParams.get('gameName') || '';
+  let tagLine = searchParams.get('tagLine') || '';
   const region = searchParams.get('region') || 'kr';
 
   if (!API_KEY) {
     return NextResponse.json({ error: '伺服器未設定 RIOT_API_KEY' }, { status: 500 });
   }
 
-  if (!riotId || !riotId.includes('#')) {
+  if (riotId && riotId.includes('#')) {
+    const parts = riotId.split('#');
+    gameName = parts[0];
+    tagLine = parts[1];
+  }
+
+  if (!gameName) {
     return NextResponse.json({ error: '請輸入有效的 Riot ID (例: Name#TAG)' }, { status: 400 });
   }
 
-  const [gameName, tagLine] = riotId.split('#');
+  if (!tagLine) {
+    tagLine = region.toLowerCase() === 'tw2' ? 'TW2' : 'KR1';
+  }
+
   const regionConfig = REGION_MAPPING[region.toLowerCase()] || REGION_MAPPING['kr'];
 
   try {
-    // 1. Account-v1
     const accountRes = await fetch(
       `https://${regionConfig.accountRouting}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}?api_key=${API_KEY}`,
       { cache: 'no-store' }
@@ -44,7 +55,6 @@ export async function GET(request: Request) {
     const accountData = await accountRes.json();
     const puuid = accountData.puuid;
 
-    // 2. League-v4
     let ranks: any[] = [];
     try {
       const leagueRes = await fetch(
@@ -58,7 +68,6 @@ export async function GET(request: Request) {
       console.warn('League fetch error:', e);
     }
 
-    // 3. Match-v5 IDs
     const matchIdsRes = await fetch(
       `https://${regionConfig.matchRouting}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?type=ranked&start=0&count=20&api_key=${API_KEY}`,
       { cache: 'no-store' }
@@ -84,18 +93,15 @@ export async function GET(request: Request) {
 
           if (!playerParticipant) return null;
 
-          // 計算玩家隊伍總擊殺數 (用於計算參戰率)
           const teamId = playerParticipant.teamId;
           const teamTotalKills = participants
             .filter((p: any) => p.teamId === teamId)
             .reduce((sum: number, p: any) => sum + (p.kills || 0), 0);
 
-          // 計算小兵數 (CS)
           const cs = (playerParticipant.totalMinionsKilled || 0) + (playerParticipant.neutralMinionsKilled || 0);
           const gameDurationMin = (info.gameDuration || 1) / 60;
           const totalDamage = playerParticipant.totalDamageDealtToChampions || 0;
 
-          // 格式化 10 位參與者資料
           const formattedParticipants = participants.map((p: any) => {
             const pCs = (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0);
             return {
@@ -123,7 +129,6 @@ export async function GET(request: Request) {
             };
           });
 
-          // 位置相容修正 (中路有時會被錯判成 UTILITY)
           let position = playerParticipant.individualPosition || playerParticipant.teamPosition || 'MIDDLE';
           if (position === 'Invalid' || position === 'UTILITY') {
             position = playerParticipant.lane === 'MIDDLE' ? 'MIDDLE' : position;
@@ -136,7 +141,7 @@ export async function GET(request: Request) {
             gameDuration: info.gameDuration || 0,
             gameCreation: info.gameCreation || 0,
             win: playerParticipant.win || false,
-            teamId: playerParticipant.teamId, // 100 為藍方, 200 為紅方
+            teamId: playerParticipant.teamId,
             isBlueSide: playerParticipant.teamId === 100,
             championName: playerParticipant.championName || '',
             kills: playerParticipant.kills || 0,
