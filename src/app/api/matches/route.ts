@@ -1,16 +1,15 @@
 import { NextResponse } from 'next/server';
 
-// 允許這支 API 最多執行 30 秒（避免 Vercel 超時崩潰）
 export const maxDuration = 30;
 
 const API_KEY = process.env.RIOT_API_KEY;
 
-// 修正 REGION_MAPPING：台服 (TW2) 對戰紀錄需要使用 'sea' routing
-const REGION_MAPPING: Record<string, { routing: string; platform: string }> = {
-  kr: { routing: 'asia', platform: 'kr' },
-  tw2: { routing: 'sea', platform: 'tw2' },
-  na1: { routing: 'americas', platform: 'na1' },
-  euw1: { routing: 'europe', platform: 'euw1' },
+// 映射表：matchRouting 專供 Match-v5 使用
+const REGION_MAPPING: Record<string, { accountRouting: string; matchRouting: string; platform: string }> = {
+  kr: { accountRouting: 'asia', matchRouting: 'asia', platform: 'kr' },
+  tw2: { accountRouting: 'asia', matchRouting: 'sea', platform: 'tw2' },
+  na1: { accountRouting: 'americas', matchRouting: 'americas', platform: 'na1' },
+  euw1: { accountRouting: 'europe', matchRouting: 'europe', platform: 'euw1' },
 };
 
 export async function GET(request: Request) {
@@ -30,10 +29,9 @@ export async function GET(request: Request) {
   const regionConfig = REGION_MAPPING[region.toLowerCase()] || REGION_MAPPING['kr'];
 
   try {
-    // 1. 抓取 Account (PUUID)
-    // 備註：Account-v1 可以使用 asia 或 sea，但以特定路由為準
+    // 1. 抓取 Account (PUUID) - 使用 accountRouting ('asia' for TW/KR)
     const accountRes = await fetch(
-      `https://${regionConfig.routing}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}?api_key=${API_KEY}`,
+      `https://${regionConfig.accountRouting}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}?api_key=${API_KEY}`,
       { cache: 'no-store' }
     );
 
@@ -47,7 +45,7 @@ export async function GET(request: Request) {
     const accountData = await accountRes.json();
     const puuid = accountData.puuid;
 
-    // 2. 抓取段位 (League-v4) - 使用 platform (例如 tw2 / kr)
+    // 2. 抓取段位 (League-v4) - 使用 platform ('tw2')
     let ranks: any[] = [];
     
     try {
@@ -63,9 +61,9 @@ export async function GET(request: Request) {
       console.warn('League fetch ignored error:', e);
     }
 
-    // 3. 抓取 20 場對戰 ID 列表 - 使用 routing (TW2 必須用 sea)
+    // 3. 抓取 20 場對戰 ID 列表 - 使用 matchRouting ('sea' for TW)
     const matchIdsRes = await fetch(
-      `https://${regionConfig.routing}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=0&count=20&api_key=${API_KEY}`,
+      `https://${regionConfig.matchRouting}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=0&count=20&api_key=${API_KEY}`,
       { cache: 'no-store' }
     );
 
@@ -77,7 +75,7 @@ export async function GET(request: Request) {
       const fetchMatchDetail = async (matchId: string) => {
         try {
           const detailRes = await fetch(
-            `https://${regionConfig.routing}.api.riotgames.com/lol/match/v5/matches/${matchId}?api_key=${API_KEY}`,
+            `https://${regionConfig.matchRouting}.api.riotgames.com/lol/match/v5/matches/${matchId}?api_key=${API_KEY}`,
             { cache: 'no-store' }
           );
           if (!detailRes.ok) return null;
