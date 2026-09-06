@@ -47,7 +47,7 @@ const POSITION_MAP: Record<string, { label: string; color: string }> = {
 const DAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
 export default function Home() {
-  const [riotId, setRiotId] = useState('Fungz#TW2');
+  const [riotId, setRiotId] = useState( Faker#TW2');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState('');
@@ -78,7 +78,7 @@ const res = await fetch(`/api/matches?riotId=${encodeURIComponent(searchId)}&reg
   };
 
   const matches = data?.matches || [];
-  const filteredMatches = matches.filter((m: any) => m.isRanked);
+  const filteredMatches = matches;
 
   // 概要數據
   const totalGames = filteredMatches.length;
